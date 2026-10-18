@@ -9,7 +9,10 @@ import {
     Modal,
     App,
     ButtonComponent,
+    Notice,
+    moment,
 } from "obsidian";
+import { getAllDailyNotes, getDailyNote } from "obsidian-daily-notes-interface";
 import { TimeRange, TimeField } from "./types/time";
 import DailyNoteEditorView from "./component/DailyNoteEditorView.svelte";
 export const DAILY_NOTE_VIEW_TYPE = "daily-note-editor-view";
@@ -191,6 +194,15 @@ export class DailyNoteView extends ItemView {
         this.plugin.openDailyNoteEditor();
     }
 
+    openDailyNoteForDate(date: string) {
+        const dailyNote = getDailyNote(moment(date), getAllDailyNotes());
+        if (!dailyNote) {
+            new Notice(`No daily note found for ${date}`);
+            return;
+        }
+        this.app.workspace.getLeaf(false).openFile(dailyNote);
+    }
+
     async onOpen(): Promise<void> {
         this.scope.register(["Mod"], "f", (e) => {
             // do-nothing
@@ -355,6 +367,28 @@ export class DailyNoteView extends ItemView {
                     customRange: this.customRange,
                 });
             }
+        });
+
+        this.addAction("calendar-check", "Open daily note", (e) => {
+            const menu = new Menu();
+
+            menu.addItem((item) => {
+                item.setTitle("Today");
+                item.onClick(() => {
+                    this.openDailyNoteForDate(moment().format("YYYY-MM-DD"));
+                });
+            });
+
+            menu.addItem((item) => {
+                item.setTitle("Pick Date...");
+                item.onClick(() => {
+                    new OpenDateModal(this.app, (date) =>
+                        this.openDailyNoteForDate(date)
+                    ).open();
+                });
+            });
+
+            menu.showAtMouseEvent(e);
         });
 
         this.app.vault.on("create", this.onFileCreate);
@@ -572,6 +606,67 @@ class SelectTargetModal extends Modal {
         const target = this.targetInput.value.trim();
         if (target) {
             this.saveCallback(target);
+            this.close();
+        }
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
+class OpenDateModal extends Modal {
+    saveCallback: (date: string) => void;
+    dateInput: HTMLInputElement;
+
+    constructor(app: App, saveCallback: (date: string) => void) {
+        super(app);
+        this.saveCallback = saveCallback;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl("h2", { text: "Open Daily Note" });
+
+        const dateContainer = contentEl.createEl("div", {
+            cls: "custom-range-date-container",
+        });
+        dateContainer.createEl("span", { text: "Date: " });
+        this.dateInput = dateContainer.createEl("input", {
+            type: "date",
+            value: moment().format("YYYY-MM-DD"),
+        });
+
+        const footerEl = contentEl.createDiv();
+        footerEl.addClass("modal-button-container");
+
+        footerEl
+            .createEl("button", {
+                text: "Cancel",
+                attr: { type: "button" },
+            })
+            .addEventListener("click", () => {
+                this.close();
+            });
+
+        footerEl
+            .createEl("button", {
+                text: "Open",
+                cls: "mod-cta",
+            })
+            .addEventListener("click", (e) => {
+                e.preventDefault();
+                this.save();
+            });
+    }
+
+    save() {
+        const date = this.dateInput.value;
+        if (date) {
+            this.saveCallback(date);
             this.close();
         }
     }
