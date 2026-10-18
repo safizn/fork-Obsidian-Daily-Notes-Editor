@@ -21,11 +21,6 @@ import {
     DEFAULT_SETTINGS,
 } from "./dailyNoteSettings";
 import { TimeField } from "./types/time";
-import {
-    getAllDailyNotes,
-    getDailyNote,
-    createDailyNote,
-} from "obsidian-daily-notes-interface";
 import { createUpDownNavigationExtension } from "./component/UpAndDownNavigate";
 // import { setActiveEditorExt } from "./component/SetActiveEditor";
 import { DAILY_NOTE_VIEW_TYPE, DailyNoteView } from "./dailyNoteView";
@@ -74,17 +69,14 @@ export default class DailyNoteViewPlugin extends Plugin {
 
         this.initCssRules();
 
-        // Create daily note and open the Daily Notes Editor on startup if enabled
-        if (this.settings.createAndOpenOnStartup) {
+        // Open the Daily Notes Editor on startup if enabled (today's daily note is not created)
+        if (this.settings.openOnStartup) {
             this.app.workspace.onLayoutReady(async () => {
-                // First ensure today's daily note exists
-                await this.ensureTodaysDailyNoteExists();
                 if (
                     this.app.workspace.getLeavesOfType(DAILY_NOTE_VIEW_TYPE)
                         .length > 0
                 )
                     return;
-                // Then open the Daily Notes Editor
                 await this.openDailyNoteEditor();
             });
         }
@@ -144,20 +136,6 @@ export default class DailyNoteViewPlugin extends Plugin {
         view.setTimeField(timeField);
 
         workspace.revealLeaf(leaf);
-    }
-
-    async ensureTodaysDailyNoteExists() {
-        try {
-            const currentDate = moment();
-            const allDailyNotes = getAllDailyNotes();
-            const currentDailyNote = getDailyNote(currentDate, allDailyNotes);
-
-            if (!currentDailyNote) {
-                await createDailyNote(currentDate);
-            }
-        } catch (error) {
-            console.error("Failed to create daily note:", error);
-        }
     }
 
     initCssRules() {
@@ -317,11 +295,19 @@ export default class DailyNoteViewPlugin extends Plugin {
     }
 
     public async loadSettings() {
-        this.settings = Object.assign(
+        const loaded = Object.assign(
             {},
-            DEFAULT_SETTINGS,
             await this.loadData()
-        );
+        ) as Partial<DailyNoteSettings> & { createAndOpenOnStartup?: boolean };
+
+        // Migrate createAndOpenOnStartup -> openOnStartup
+        if (loaded.createAndOpenOnStartup !== undefined) {
+            loaded.openOnStartup =
+                loaded.openOnStartup ?? loaded.createAndOpenOnStartup;
+            delete loaded.createAndOpenOnStartup;
+        }
+
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
     }
 
     async saveSettings() {
@@ -334,8 +320,6 @@ export default class DailyNoteViewPlugin extends Plugin {
         if (currentDay !== this.lastCheckedDay) {
             this.lastCheckedDay = currentDay;
             console.log("Day changed, updating daily notes view");
-
-            await this.ensureTodaysDailyNoteExists();
 
             const dailyNoteLeaves =
                 this.app.workspace.getLeavesOfType(DAILY_NOTE_VIEW_TYPE);

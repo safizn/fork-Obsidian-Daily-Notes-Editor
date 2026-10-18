@@ -4,7 +4,7 @@ import { App, debounce, PluginSettingTab, Setting, Modal } from "obsidian";
 export interface DailyNoteSettings {
     hideFrontmatter: boolean;
     hideBacklinks: boolean;
-    createAndOpenOnStartup: boolean;
+    openOnStartup: boolean;
     useArrowUpOrDownToNavigate: boolean;
 
     preset: {
@@ -16,7 +16,7 @@ export interface DailyNoteSettings {
 export const DEFAULT_SETTINGS: DailyNoteSettings = {
     hideFrontmatter: false,
     hideBacklinks: false,
-    createAndOpenOnStartup: false,
+    openOnStartup: false,
     useArrowUpOrDownToNavigate: false,
     preset: [],
 };
@@ -94,15 +94,15 @@ export class DailyNoteSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Create and open Daily Notes Editor on startup")
+            .setName("Open Daily Notes Editor on startup")
             .setDesc(
-                "Automatically create today's daily note and open the Daily Notes Editor when Obsidian starts"
+                "Open the Daily Notes Editor when Obsidian starts. Today's daily note is not created automatically."
             )
             .addToggle((toggle) =>
                 toggle
-                    .setValue(settings.createAndOpenOnStartup)
+                    .setValue(settings.openOnStartup)
                     .onChange(async (value) => {
-                        this.plugin.settings.createAndOpenOnStartup = value;
+                        this.plugin.settings.openOnStartup = value;
                         this.applySettingsUpdate();
                     })
             );
