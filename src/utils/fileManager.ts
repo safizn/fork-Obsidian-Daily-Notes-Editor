@@ -2,7 +2,6 @@ import { TFile, moment, App } from "obsidian";
 import {
     getAllDailyNotes,
     getDailyNote,
-    createDailyNote,
     getDateFromFile,
     getDailyNoteSettings,
     DEFAULT_DAILY_NOTE_FORMAT,
@@ -340,25 +339,6 @@ export class FileManager {
 
         this.hasCurrentDay = true;
         return true;
-    }
-
-    public async createNewDailyNote(): Promise<TFile | null> {
-        if (this.options.mode !== "daily" || this.hasCurrentDay) {
-            return null;
-        }
-
-        const currentDate = moment();
-        const currentDailyNote: any = await createDailyNote(currentDate);
-
-        if (currentDailyNote) {
-            this.allFiles.push(currentDailyNote);
-            this.allFiles = this.sortDailyNotes(this.allFiles);
-            this.hasCurrentDay = true;
-            this.filterFilesByRange();
-            return currentDailyNote;
-        }
-
-        return null;
     }
 
     public fileCreate(file: TFile): void {

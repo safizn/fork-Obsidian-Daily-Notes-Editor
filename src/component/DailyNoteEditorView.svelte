@@ -174,16 +174,6 @@
         }
     }
 
-    async function createNewDailyNote() {
-        const newNote = await fileManager.createNewDailyNote();
-        if (newNote) {
-            renderedFiles = [newNote, ...renderedFiles];
-            // Automatically mark the new note as visible
-            visibleNotes.add(newNote.path);
-            visibleNotes = visibleNotes;
-        }
-    }
-
     export function tick() {
         // First check if we need to update for a new day
         check();
@@ -271,13 +261,6 @@
             </div>
         </div>
     {/if}
-    {#if selectionMode === "daily" && !fileManager?.hasCurrentDayNote() && (selectedRange === 'all' || selectedRange === 'week' || selectedRange === 'month' || selectedRange === 'year' || selectedRange === 'quarter')}
-        <div class="dn-blank-day" on:click={createNewDailyNote} aria-hidden="true">
-            <div class="dn-blank-day-text">
-                Create a daily note for today ✍
-            </div>
-        </div>
-    {/if}
     {#each renderedFiles as file (file.path)}
         <div class="daily-note-wrapper" use:inview={{
             rootMargin: "80%",
@@ -322,29 +305,6 @@
         text-align: center;
     }
 
-    .dn-blank-day {
-        display: flex;
-        margin-left: auto;
-        margin-right: auto;
-        max-width: var(--file-line-width);
-        color: var(--color-base-40);
-        padding-top: 20px;
-        padding-bottom: 20px;
-        transition: all 300ms;
-    }
-
-    .dn-blank-day:hover {
-        padding-top: 40px;
-        padding-bottom: 40px;
-        transition: padding 300ms;
-    }
-
-    .dn-blank-day-text {
-        margin-left: auto;
-        margin-right: auto;
-        text-align: center;
-    }
-    
     .daily-note-wrapper {
         width: 100%;
     }
