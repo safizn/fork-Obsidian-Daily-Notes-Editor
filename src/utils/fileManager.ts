@@ -218,10 +218,14 @@ export class FileManager {
             this.options.timeField
         );
 
+        // 'name' sorting has no time semantics; file.stat has no such key and
+        // moment(undefined) evaluates to now, silently passing every filter
+        const statField = baseTimeField === "name" ? "mtime" : baseTimeField;
+
         // Filter files by creation or modification time
         this.filteredFiles = this.allFiles.filter((file) => {
             // Get the time of the file based on the base timeField option
-            const fileDate = moment(file.stat[baseTimeField]);
+            const fileDate = moment(file.stat[statField]);
 
             return this.isDateInRange(fileDate, now);
         });
@@ -487,11 +491,12 @@ export class FileManager {
     }
 
     public getAllFiles(): TFile[] {
-        return this.allFiles;
+        return [...this.allFiles];
     }
 
+    // Return a copy: the view splices its result in place as a render queue
     public getFilteredFiles(): TFile[] {
-        return this.filteredFiles;
+        return [...this.filteredFiles];
     }
 
     public hasCurrentDayNote(): boolean {

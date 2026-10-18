@@ -31,6 +31,7 @@ export class DailyNoteView extends ItemView {
     selectionMode: "daily" | "folder" | "tag" = "daily";
     target: string = "";
     timeField: TimeField = "mtime";
+    readerMode: boolean = false;
 
     customRange: {
         start: Date;
@@ -80,6 +81,10 @@ export class DailyNoteView extends ItemView {
 
     onFileDelete = (file: TAbstractFile) => {
         if (file instanceof TFile) this.view.fileDelete(file);
+    };
+
+    onFileRename = (file: TAbstractFile, oldPath: string) => {
+        if (file instanceof TFile) this.view.fileRename(file, oldPath);
     };
 
     setSelectedRange(range: TimeRange) {
@@ -136,6 +141,7 @@ export class DailyNoteView extends ItemView {
             timeField: this.timeField,
             selectedRange: this.selectedDaysRange,
             customRange: this.customRange,
+            readerMode: this.readerMode,
         };
     }
 
@@ -149,6 +155,7 @@ export class DailyNoteView extends ItemView {
                 timeField?: TimeField;
                 selectedRange?: TimeRange;
                 customRange?: { start: Date; end: Date } | null;
+                readerMode?: boolean;
             };
 
             if (customState.selectionMode)
@@ -159,6 +166,8 @@ export class DailyNoteView extends ItemView {
                 this.selectedDaysRange = customState.selectedRange;
             if (customState.customRange)
                 this.customRange = customState.customRange;
+            if (customState.readerMode !== undefined)
+                this.readerMode = customState.readerMode;
 
             this.view = new DailyNoteEditorView({
                 target: this.contentEl,
@@ -170,6 +179,7 @@ export class DailyNoteView extends ItemView {
                     selectionMode: this.selectionMode,
                     target: this.target,
                     timeField: this.timeField,
+                    readerMode: this.readerMode,
                 },
             });
 
@@ -187,6 +197,13 @@ export class DailyNoteView extends ItemView {
         this.timeField = field;
         if (this.view) {
             this.view.$set({ timeField: field });
+        }
+    }
+
+    setReaderMode(on: boolean) {
+        this.readerMode = on;
+        if (this.view) {
+            this.view.$set({ readerMode: on });
         }
     }
 
@@ -391,8 +408,22 @@ export class DailyNoteView extends ItemView {
             menu.showAtMouseEvent(e);
         });
 
-        this.app.vault.on("create", this.onFileCreate);
-        this.app.vault.on("delete", this.onFileDelete);
+        this.addAction("book-open", "Toggle reader mode", () => {
+            this.plugin.settings.readerMode = !this.plugin.settings.readerMode;
+            this.plugin.saveSettings();
+            this.setReaderMode(this.plugin.settings.readerMode);
+        });
+
+        this.registerEvent(this.app.vault.on("create", this.onFileCreate));
+        this.registerEvent(this.app.vault.on("delete", this.onFileDelete));
+        this.registerEvent(this.app.vault.on("rename", this.onFileRename));
+    }
+
+    async onClose(): Promise<void> {
+        // Destroy the Svelte view so note editors and the fill interval are
+        // torn down with the view instead of leaking across close/reopen
+        this.view?.$destroy();
+        this.view = null as unknown as DailyNoteEditorView;
     }
 
     onPaneMenu(

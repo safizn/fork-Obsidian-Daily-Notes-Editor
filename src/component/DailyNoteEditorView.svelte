@@ -6,7 +6,7 @@
     import DailyNote from "./DailyNote.svelte";
     import { inview } from "svelte-inview";
     import { TimeRange, SelectionMode, TimeField } from "../types/time";
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { FileManager, FileManagerOptions } from "../utils/fileManager";
 
 
@@ -17,9 +17,13 @@
     export let selectionMode: SelectionMode = "daily";
     export let target: string = "";
     export let timeField: TimeField = "mtime"; // 默认使用修改时间
-    
+    export let readerMode: boolean = false;
+
     const size = 1;
     let intervalId;
+
+    // Day the rendered list was last (re)built — gates check() rebuilds
+    let lastRenderedDay = moment().format("YYYY-MM-DD");
 
     let renderedFiles: TFile[] = [];
     let filteredFiles: TFile[] = [];
@@ -57,6 +61,7 @@
         });
         
         // Reset rendered files and start filling viewport again
+        lastRenderedDay = moment().format("YYYY-MM-DD");
         renderedFiles = [];
         visibleNotes.clear();
         filteredFiles = fileManager.getFilteredFiles();
@@ -118,7 +123,7 @@
 
     function startFillViewport() {
         if (!intervalId) {
-            intervalId = setInterval(infiniteHandler, 1);
+            intervalId = setInterval(infiniteHandler, 16);
         }
     }
 
@@ -129,9 +134,13 @@
 
     function infiniteHandler() {
         if (leaf.height === 0) return;
-        if (!fileManager || !hasMore) return;
+        if (!fileManager || !hasMore) {
+            stopFillViewport();
+            return;
+        }
         if (filteredFiles.length === 0) {
             hasMore = false;
+            stopFillViewport();
         } else {
             renderedFiles = [
                 ...renderedFiles,
@@ -146,6 +155,8 @@
         }
     }
 
+    onDestroy(() => stopFillViewport());
+
     function ensureViewFilled() {
         if (!loaderRef) return;
         
@@ -156,7 +167,7 @@
         const viewportHeight = window.innerHeight;
         
         // Get the content element's height (with fallback)
-        const contentHeight = leaf.view.contentEl.clientHeight || leaf.view.contentEl.innerHeight || viewportHeight;
+        const contentHeight = leaf.view.contentEl.clientHeight || viewportHeight;
         
         // Use the maximum of viewport height and content height with a buffer
         const effectiveHeight = Math.max(viewportHeight, contentHeight) + 200;
@@ -183,15 +194,18 @@
     }
 
     export function check() {
+        if (!fileManager) return;
         // Check if there's a new daily note (e.g., after day change)
         const hadDailyNote = fileManager.hasCurrentDayNote();
         fileManager.checkDailyNote();
         const hasDailyNote = fileManager.hasCurrentDayNote();
-        
-        // If the daily note status changed (e.g., we just crossed midnight),
-        // refresh the file list to ensure we show the current day's daily note
-        if (hadDailyNote !== hasDailyNote || 
-            (selectionMode === "daily" && selectedRange !== "all")) {
+        const today = moment().format("YYYY-MM-DD");
+
+        // Rebuild only when the calendar day actually changed or today's note
+        // appeared/disappeared — never on routine periodic checks
+        if (hadDailyNote !== hasDailyNote || today !== lastRenderedDay) {
+            lastRenderedDay = today;
+
             // Get updated filtered files
             filteredFiles = fileManager.getFilteredFiles();
             
@@ -208,17 +222,18 @@
 
     export function fileCreate(file: TFile) {
         fileManager.fileCreate(file);
-        
+
         // Update the rendered files if needed
         if (selectionMode === "daily") {
-            // For daily notes, we need to check if the file should be added to the rendered files
-            const filteredFiles = fileManager.getFilteredFiles();
-            if (filteredFiles.some(f => f.basename === file.basename) && 
+            // Drop the new note from the pending queue so it cannot be
+            // double-added (prepend below + later splice)
+            filteredFiles = filteredFiles.filter(f => f.basename !== file.basename);
+
+            const fresh = fileManager.getFilteredFiles();
+            if (fresh.some(f => f.basename === file.basename) &&
                 !renderedFiles.some(f => f.basename === file.basename)) {
                 renderedFiles = [file, ...renderedFiles];
-                // Automatically mark the new note as visible
-                visibleNotes.add(file.path);
-                visibleNotes = visibleNotes;
+                // The inview action decides when the new note's editor loads
             }
         } else {
             // For folder and tag modes, we can simply update the rendered files
@@ -228,22 +243,34 @@
 
     export function fileDelete(file: TFile) {
         fileManager.fileDelete(file);
-        
+
         // Remove the file from rendered files if it exists
         renderedFiles = renderedFiles.filter((dailyNote) => {
             return dailyNote.basename !== file.basename;
         });
-        
+
+        // Also purge it from the pending queue so it is never spliced in later
+        filteredFiles = filteredFiles.filter((dailyNote) => {
+            return dailyNote.basename !== file.basename;
+        });
+
         // Remove from visible notes
         if (visibleNotes.has(file.path)) {
             visibleNotes.delete(file.path);
             visibleNotes = visibleNotes;
         }
     }
+
+    export function fileRename(file: TFile, oldPath: string) {
+        if (visibleNotes.has(oldPath)) {
+            visibleNotes.delete(oldPath);
+            visibleNotes.add(file.path);
+            visibleNotes = visibleNotes;
+        }
+    }
     
     // Handle note visibility change
     function handleNoteVisibilityChange(file: TFile, isVisible: boolean) {
-        console.log("inview", isVisible)
         if (isVisible) {
             visibleNotes.add(file.path);
         } else {
@@ -261,23 +288,24 @@
             </div>
         </div>
     {/if}
-    {#each renderedFiles as file (file.path)}
+    {#each renderedFiles as file (file.path + (readerMode ? ':r' : ':s'))}
         <div class="daily-note-wrapper" use:inview={{
             rootMargin: "80%",
             unobserveOnEnter: false,
             root: leaf.view.contentEl
         }} on:inview_change={({ detail }) => handleNoteVisibilityChange(file, detail.inView)}>
-            <DailyNote 
-                file={file} 
-                plugin={plugin} 
-                leaf={leaf} 
+            <DailyNote
+                file={file}
+                plugin={plugin}
+                leaf={leaf}
                 shouldRender={visibleNotes.has(file.path)}
+                readerMode={readerMode}
             />
         </div>
     {/each}
     <div bind:this={loaderRef} class="dn-view-loader" use:inview={{
-        root: leaf.view.containerEl
-    }} on:inview_init={startFillViewport} on:inview_change={infiniteHandler}
+        root: leaf.view.contentEl
+    }} on:inview_init={startFillViewport} on:inview_enter={startFillViewport} on:inview_change={infiniteHandler}
          on:inview_leave={stopFillViewport}/>
     {#if !hasMore}
         <div class="no-more-text">—— No more of results ——</div>

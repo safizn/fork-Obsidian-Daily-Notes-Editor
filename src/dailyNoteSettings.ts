@@ -5,6 +5,7 @@ export interface DailyNoteSettings {
     hideFrontmatter: boolean;
     hideBacklinks: boolean;
     openOnStartup: boolean;
+    readerMode: boolean;
     useArrowUpOrDownToNavigate: boolean;
 
     preset: {
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: DailyNoteSettings = {
     hideFrontmatter: false,
     hideBacklinks: false,
     openOnStartup: false,
+    readerMode: false,
     useArrowUpOrDownToNavigate: false,
     preset: [],
 };
@@ -94,6 +96,20 @@ export class DailyNoteSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
+            .setName("Reader mode")
+            .setDesc(
+                "Render daily notes in reading mode (view only, no inline editing)"
+            )
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(settings.readerMode)
+                    .onChange(async (value) => {
+                        this.plugin.settings.readerMode = value;
+                        this.applySettingsUpdate();
+                    })
+            );
+
+        new Setting(containerEl)
             .setName("Open Daily Notes Editor on startup")
             .setDesc(
                 "Open the Daily Notes Editor when Obsidian starts. Today's daily note is not created automatically."
@@ -130,7 +146,7 @@ export class DailyNoteSettingTab extends PluginSettingTab {
             });
         } else {
             settings.preset.forEach((preset, index) => {
-                new Setting(containerEl)
+                new Setting(presetContainer)
                     .setName(
                         preset.type === "folder"
                             ? "Focus on Folder: "

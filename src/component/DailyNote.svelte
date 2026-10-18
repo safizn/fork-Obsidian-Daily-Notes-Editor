@@ -1,6 +1,6 @@
 <script lang="ts">
     import type DailyNoteViewPlugin from "../dailyNoteViewIndex";
-    import { MarkdownView, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+    import { TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
     import { spawnLeafView } from "../leafView";
     import { onDestroy, onMount } from "svelte";
 
@@ -8,6 +8,7 @@
     export let plugin: DailyNoteViewPlugin;
     export let leaf: WorkspaceLeaf;
     export let shouldRender: boolean = true;
+    export let readerMode: boolean = false;
 
     let editorEl: HTMLElement;
     let containerEl: HTMLElement;
@@ -17,6 +18,7 @@
 
     let createdLeaf: WorkspaceLeaf;
     let unloadTimeout: number | null = null;
+    let heightObserver: ResizeObserver | null = null;
     let editorHeight: number = 100; // Default minimum height
     
     // Track if this component is being destroyed
@@ -31,8 +33,6 @@
         }
     });
 
-    console.log(shouldRender, rendered)
-
     $: if (editorEl && shouldRender && !rendered) {
         showEditor();
     } else if (editorEl && !shouldRender && rendered) {
@@ -44,6 +44,8 @@
         if (unloadTimeout) {
             window.clearTimeout(unloadTimeout);
         }
+        heightObserver?.disconnect();
+        heightObserver = null;
         if (rendered && createdLeaf) {
             unloadEditor();
         }
@@ -72,7 +74,7 @@
                 type: "markdown",
                 state: {
                     file: file.path,
-                    mode: "source",
+                    mode: readerMode ? "preview" : "source",
                     source: false,
                     backlinks: !plugin.settings.hideBacklinks,
                     backlinkOpts: {
@@ -89,23 +91,15 @@
             createdLeaf.parentLeaf = leaf;
 
             rendered = true;
-            
-            // Set a small timeout to allow the editor to render completely
-            const timeout = window.setTimeout(() => {
-                if (createdLeaf && containerEl) {
-                    // Get the actual height of the editor content
-                    if(!(createdLeaf.view instanceof MarkdownView)) return; 
-                    // @ts-ignore
-                    const actualHeight = createdLeaf.view.editMode?.editor?.cm?.dom.innerHeight;
-                    if (actualHeight > 0) {
-                        editorHeight = actualHeight;
-                        // Apply the height to the container
-                        containerEl.style.minHeight = `${editorHeight}px`;
 
-                        window.clearTimeout(timeout);
-                    }
-                }
-            }, 400);
+            // Track the editor's live height so the reserved min-height stays
+            // correct for async content (embeds, images) that grows after paint
+            heightObserver = new ResizeObserver(() => {
+                if (!rendered || isDestroying || !editorEl) return;
+                const h = Math.ceil(editorEl.getBoundingClientRect().height);
+                if (h > 0) editorHeight = h;
+            });
+            heightObserver.observe(editorEl);
         } catch (error) {
             console.error("Error creating leaf view:", error);
         }
@@ -128,26 +122,29 @@
     // Unload the editor to free up resources
     function unloadEditor() {
         if (!rendered || !createdLeaf) return;
-        
+
         try {
-            // Use safe type checking before accessing basename
-            const fileName = file instanceof TFile ? file.basename : "unknown";
-            console.log(`Unloading editor for ${fileName}`);
-            
+            heightObserver?.disconnect();
+            heightObserver = null;
+
+            // Pin the live wrapper height before detach collapses the content,
+            // so unloading causes zero layout shift (no scroll jump / flicker)
+            if (containerEl && !isCollapsed) {
+                const h = Math.ceil(containerEl.getBoundingClientRect().height);
+                if (h > 0) editorHeight = h;
+            }
+
             // Detach the leaf
             if (createdLeaf.detach) {
                 createdLeaf.detach();
             }
-            
+
             // Clear the editor element
             if (editorEl) {
                 editorEl.empty();
             }
-            
+
             rendered = false;
-            
-            // Keep the container height to prevent scroll jumps
-            // The height will be maintained by the min-height we set earlier
         } catch (error) {
             console.error("Error unloading editor:", error);
         }
@@ -161,6 +158,7 @@
     }
 
     function handleEditorClick() {
+        if (readerMode) return;
         // @ts-ignore
         const editor = createdLeaf?.view?.editMode?.editor;
         if (editor && !editor.hasFocus()) {

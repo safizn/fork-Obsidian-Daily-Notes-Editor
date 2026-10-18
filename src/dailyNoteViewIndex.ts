@@ -86,17 +86,19 @@ export default class DailyNoteViewPlugin extends Plugin {
             window.setInterval(this.checkDayChange.bind(this), 1000 * 60 * 15)
         );
 
-        this.app.workspace.on("file-menu", (menu, file, source, leaf) => {
-            if (file instanceof TFolder) {
-                menu.addItem((item) => {
-                    item.setIcon("calendar-range");
-                    item.setTitle("Open daily notes for this folder");
-                    item.onClick(() => {
-                        this.openFolderView(file.path);
+        this.registerEvent(
+            this.app.workspace.on("file-menu", (menu, file, source, leaf) => {
+                if (file instanceof TFolder) {
+                    menu.addItem((item) => {
+                        item.setIcon("calendar-range");
+                        item.setTitle("Open daily notes for this folder");
+                        item.onClick(() => {
+                            this.openFolderView(file.path);
+                        });
                     });
-                });
-            }
-        });
+                }
+            })
+        );
     }
 
     onunload() {
@@ -319,7 +321,6 @@ export default class DailyNoteViewPlugin extends Plugin {
 
         if (currentDay !== this.lastCheckedDay) {
             this.lastCheckedDay = currentDay;
-            console.log("Day changed, updating daily notes view");
 
             const dailyNoteLeaves =
                 this.app.workspace.getLeavesOfType(DAILY_NOTE_VIEW_TYPE);
