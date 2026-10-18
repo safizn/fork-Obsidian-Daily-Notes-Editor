@@ -172,7 +172,7 @@
     }
 </script>
 
-<div class="daily-note-container" data-id='dn-editor-{file.path}' bind:this={containerEl} style="min-height: {isCollapsed ? 'auto' : editorHeight + 'px'};">
+<div class="daily-note-container" data-id='dn-editor-{file.path}' bind:this={containerEl} style="min-height: {isCollapsed || rendered ? 'auto' : editorHeight + 'px'};">
     <div class="daily-note">
         {#if title}
             <div class="daily-note-title inline-title">

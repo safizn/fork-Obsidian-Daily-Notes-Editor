@@ -9,6 +9,7 @@ import {
     Modal,
     App,
     ButtonComponent,
+    ExtraButtonComponent,
     Notice,
     moment,
 } from "obsidian";
@@ -141,7 +142,6 @@ export class DailyNoteView extends ItemView {
             timeField: this.timeField,
             selectedRange: this.selectedDaysRange,
             customRange: this.customRange,
-            readerMode: this.readerMode,
         };
     }
 
@@ -155,7 +155,6 @@ export class DailyNoteView extends ItemView {
                 timeField?: TimeField;
                 selectedRange?: TimeRange;
                 customRange?: { start: Date; end: Date } | null;
-                readerMode?: boolean;
             };
 
             if (customState.selectionMode)
@@ -166,8 +165,8 @@ export class DailyNoteView extends ItemView {
                 this.selectedDaysRange = customState.selectedRange;
             if (customState.customRange)
                 this.customRange = customState.customRange;
-            if (customState.readerMode !== undefined)
-                this.readerMode = customState.readerMode;
+            // readerMode deliberately not restored: editing mode is always
+            // the default when a view opens
 
             this.view = new DailyNoteEditorView({
                 target: this.contentEl,
@@ -408,11 +407,19 @@ export class DailyNoteView extends ItemView {
             menu.showAtMouseEvent(e);
         });
 
-        this.addAction("book-open", "Toggle reader mode", () => {
-            this.plugin.settings.readerMode = !this.plugin.settings.readerMode;
-            this.plugin.saveSettings();
-            this.setReaderMode(this.plugin.settings.readerMode);
-        });
+        const readerButton = this.addAction(
+            this.readerMode ? "book-open" : "pencil",
+            "Toggle reader mode",
+            () => {
+                this.plugin.settings.readerMode =
+                    !this.plugin.settings.readerMode;
+                this.plugin.saveSettings();
+                this.setReaderMode(this.plugin.settings.readerMode);
+                (readerButton as unknown as ExtraButtonComponent).setIcon(
+                    this.plugin.settings.readerMode ? "book-open" : "pencil"
+                );
+            }
+        );
 
         this.registerEvent(this.app.vault.on("create", this.onFileCreate));
         this.registerEvent(this.app.vault.on("delete", this.onFileDelete));

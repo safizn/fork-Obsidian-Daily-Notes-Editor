@@ -38,6 +38,38 @@
     background: none !important;
 }
 
+/* Reader mode: the preview view carries --file-margins block padding that
+   the editing path already zeroes for .cm-scroller; kill the vertical part
+   only, keeping the theme's inline margins */
+.dn-editor .markdown-preview-view {
+    padding-block: 0;
+}
+
+/* Reader mode: match the editing-mode vertical pitch — reading otherwise
+   stacks --p-spacing margins and --list-spacing padding per block */
+.dn-editor .markdown-preview-view p {
+    margin-block: 0;
+}
+
+.dn-editor .markdown-preview-view li > p {
+    margin-block: 0;
+}
+
+.dn-editor .markdown-preview-view li > ul,
+.dn-editor .markdown-preview-view li > ol {
+    margin-block: 0;
+}
+
+.dn-editor .markdown-preview-view ul > li,
+.dn-editor .markdown-preview-view ol > li {
+    padding-block: 0;
+}
+
+/* Reader mode: hide the properties block like the source view does */
+body.daily-notes-hide-frontmatter .dn-editor .metadata-container {
+    display: none;
+}
+
 .dn-editor .cm-scroller {
     padding: 0 !important;
     overflow-y: clip;
