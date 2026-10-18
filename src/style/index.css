@@ -42,25 +42,6 @@
     padding: 0 !important;
     overflow-y: clip;
 }
-.daily-note-view .daily-note-wrapper::before {
-    content: "";
-    display: block;
-    height: 1px;
-    width: var(--file-line-width);
-    margin-bottom: 30px;
-    margin-left: auto;
-    margin-right: auto;
-    background-color: var(--background-modifier-border);
-}
-
-.daily-note-view .daily-note-wrapper:first-of-type::before {
-    height: 0px;
-}
-
-.daily-note-view .dn-range-indicator + .daily-note-container::before {
-    height: 0px;
-}
-
 .is-popout-window .dn-editor .dn-content {
     margin: 0;
     border-radius: var(--he-popover-border-radius);

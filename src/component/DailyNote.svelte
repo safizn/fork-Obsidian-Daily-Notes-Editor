@@ -178,18 +178,15 @@
     <div class="daily-note">
         {#if title}
             <div class="daily-note-title inline-title">
+                <!-- svelte-ignore a11y-interactive-supports-focus -->
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <span role="link" class="clickable-link" on:click={handleFileIconClick} data-title={title}>{title}</span>
                 <!-- Collapse/Expand button -->
                 <!-- svelte-ignore a11y-interactive-supports-focus -->
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <span role="button" data-collapsed={isCollapsed} class="collapse-button" on:click={toggleCollapse} title={isCollapsed ? "Expand" : "Collapse"}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>
                 </span>
-                <!-- svelte-ignore a11y-interactive-supports-focus -->
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <span role="link" class="clickable-link" on:click={handleFileIconClick} data-title={title}>{title}</span>
-                
-                
-                
             </div>
         {/if}
         <div class="daily-note-editor" data-collapsed={isCollapsed} aria-hidden="true" bind:this={editorEl} data-title={title} on:click={handleEditorClick}>
@@ -205,7 +202,7 @@
 
 <style>
     .daily-note {
-        margin-bottom: var(--size-4-5);
+        margin-bottom: var(--size-4-12);
         padding-bottom: var(--size-4-8);
     }
 
@@ -238,6 +235,21 @@
         color: var(--text-normal);
     }
 
+    .daily-note-title::before,
+    .daily-note-title::after {
+        content: "";
+        height: 1px;
+        background-color: color-mix(in srgb, var(--text-faint) 50%, transparent);
+    }
+
+    .daily-note-title::before {
+        flex: 0 0 40px;
+    }
+
+    .daily-note-title::after {
+        flex: 1;
+    }
+
     .daily-note:has(.is-readable-line-width) .daily-note-title {
         max-width: calc(var(--file-line-width) + var(--size-4-4));
         width: calc(var(--file-line-width) + var(--size-4-4));
@@ -251,10 +263,6 @@
         gap: var(--size-4-2);
     }
 
-    .collapse-button {
-        margin-left: calc(var(--size-4-8) * -1);
-    }
-
     .collapse-button[data-collapsed="true"] {
         transform: rotate(-90deg);
 
@@ -266,14 +274,13 @@
         justify-content: start;
         align-items: center;
         width: 100%;
-        padding-left: calc(calc(100% - var(--file-line-width)) / 2 - var(--size-4-2));
-        padding-right: calc(calc(100% - var(--file-line-width)) / 2 - var(--size-4-2));
         margin-top: var(--size-4-8);
 
         gap: var(--size-4-2);
     }
 
     .clickable-link {
+        color: var(--text-accent);
         cursor: pointer;
         text-decoration: none;
     }
@@ -294,6 +301,7 @@
     
     .collapse-button {
         cursor: pointer;
+        order: 1;
         display: flex;
         align-items: center;
         justify-content: center;
