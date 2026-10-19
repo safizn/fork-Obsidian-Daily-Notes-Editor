@@ -9,7 +9,7 @@ import {
     Modal,
     App,
     ButtonComponent,
-    ExtraButtonComponent,
+    setIcon,
     Notice,
     moment,
 } from "obsidian";
@@ -415,7 +415,10 @@ export class DailyNoteView extends ItemView {
                     !this.plugin.settings.readerMode;
                 this.plugin.saveSettings();
                 this.setReaderMode(this.plugin.settings.readerMode);
-                (readerButton as unknown as ExtraButtonComponent).setIcon(
+                // View.addAction returns the raw button element in this
+                // Obsidian build — setIcon() is the global, not a method
+                setIcon(
+                    readerButton as unknown as HTMLElement,
                     this.plugin.settings.readerMode ? "book-open" : "pencil"
                 );
             }
