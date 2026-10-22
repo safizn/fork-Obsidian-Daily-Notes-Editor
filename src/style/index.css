@@ -230,3 +230,52 @@ body.daily-notes-hide-backlinks .daily-note-view .embedded-backlinks {
 .is-phone .mod-root .workspace-tabs:not(.mod-visible):has(.daily-note-view) {
     display: flex !important;
 }
+
+/* Journal stream type chips — same 12-slot hue scheme as okf-link-type-badge */
+.dn-stream-chip {
+    border: 1.5px solid hsl(var(--tb-h) 65% 55%);
+    border-radius: 2px;
+    padding: 0 0.3em;
+    font-size: 0.85em;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.theme-light .dn-stream-chip {
+    color: hsl(var(--tb-h) 55% 32%);
+}
+
+.theme-dark .dn-stream-chip {
+    color: hsl(var(--tb-h) 75% 76%);
+}
+
+/* Created-document activities: ruled at the left edge, no source text */
+.stream-doc-list {
+    list-style: none;
+    padding: 0;
+    padding-left: var(--size-4-3);
+    margin: var(--size-4-2) 0 var(--size-4-8);
+    border-left: 2px solid color-mix(in srgb, var(--text-faint) 45%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2-1);
+}
+
+.stream-doc-link {
+    color: var(--link-color, var(--text-accent));
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--tb-h) 65% 55%);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+.stream-doc-link:hover {
+    color: var(--text-normal);
+}
+
+.sources-container {
+    margin-bottom: var(--size-4-4);
+}
+

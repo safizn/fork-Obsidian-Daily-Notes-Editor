@@ -1,5 +1,6 @@
 import DailyNoteViewPlugin from "./dailyNoteViewIndex";
 import { App, debounce, PluginSettingTab, Setting, Modal } from "obsidian";
+import { JournalSource } from "./utils/journalStreamIndex";
 
 export interface DailyNoteSettings {
     hideFrontmatter: boolean;
@@ -7,6 +8,7 @@ export interface DailyNoteSettings {
     openOnStartup: boolean;
     readerMode: boolean;
     useArrowUpOrDownToNavigate: boolean;
+    journalSources: JournalSource[];
 
     preset: {
         type: "folder" | "tag";
@@ -20,6 +22,14 @@ export const DEFAULT_SETTINGS: DailyNoteSettings = {
     openOnStartup: false,
     readerMode: false,
     useArrowUpOrDownToNavigate: false,
+    journalSources: [
+        { folder: "doc-spec/ideation", form: "journal" },
+        { folder: "doc-product/retrospective", form: "journal" },
+        { folder: "doc-spec", form: "document" },
+        { folder: "doc-product", form: "document" },
+        { folder: "doc-journal/work", form: "document" },
+        { folder: "doc-journal/reference", form: "document" },
+    ],
     preset: [],
 };
 
@@ -106,6 +116,62 @@ export class DailyNoteSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.readerMode = value;
                         this.applySettingsUpdate();
+                    })
+            );
+
+        new Setting(containerEl).setName("Journal Stream sources").setHeading();
+        new Setting(containerEl)
+            .setName("Journal Stream sources")
+            .setDesc(
+                "Folders contributing to the Journal Stream. Journal form embeds entries as content with an accent border and caption; document form lists created documents as links. Nested folders: the most specific source wins. Changes apply on the next refresh."
+            );
+
+        const sourcesContainer = containerEl.createDiv("sources-container");
+
+        settings.journalSources.forEach((source, index) => {
+            new Setting(sourcesContainer)
+                .addText((text) =>
+                    text
+                        .setPlaceholder("folder")
+                        .setValue(source.folder)
+                        .onChange(async (value) => {
+                            source.folder = value.trim().replace(/\/+$/, "");
+                            this.applySettingsUpdate();
+                        })
+                )
+                .addDropdown((dropdown) =>
+                    dropdown
+                        .addOption("journal", "journal")
+                        .addOption("document", "document")
+                        .setValue(source.form)
+                        .onChange(async (value) => {
+                            source.form = value as JournalSource["form"];
+                            this.applySettingsUpdate();
+                        })
+                )
+                .addButton((button) =>
+                    button.setIcon("trash").onClick(async () => {
+                        settings.journalSources.splice(index, 1);
+                        this.applySettingsUpdate();
+                        this.debounceDisplay();
+                    })
+                );
+        });
+
+        new Setting(containerEl)
+            .setName("Add source")
+            .setDesc("Add a folder to the Journal Stream")
+            .addButton((button) =>
+                button
+                    .setButtonText("Add Source")
+                    .setCta()
+                    .onClick(async () => {
+                        settings.journalSources.push({
+                            folder: "",
+                            form: "document",
+                        });
+                        this.applySettingsUpdate();
+                        this.debounceDisplay();
                     })
             );
 

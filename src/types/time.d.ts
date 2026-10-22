@@ -10,7 +10,7 @@ export type TimeRange =
     | "last-quarter"
     | "custom";
 
-export type SelectionMode = "daily" | "folder" | "tag";
+export type SelectionMode = "daily" | "folder" | "tag" | "stream";
 
 export type TimeField =
     | "ctime"

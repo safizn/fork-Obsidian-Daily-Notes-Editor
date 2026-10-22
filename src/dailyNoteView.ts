@@ -29,7 +29,7 @@ export class DailyNoteView extends ItemView {
     scope: Scope;
 
     selectedDaysRange: TimeRange = "all";
-    selectionMode: "daily" | "folder" | "tag" = "daily";
+    selectionMode: "daily" | "folder" | "tag" | "stream" = "daily";
     target: string = "";
     timeField: TimeField = "mtime";
     readerMode: boolean = false;
@@ -61,6 +61,8 @@ export class DailyNoteView extends ItemView {
             return `Folder: ${this.target}`;
         } else if (this.selectionMode === "tag") {
             return `Tag: ${this.target}`;
+        } else if (this.selectionMode === "stream") {
+            return "Journal Stream";
         }
         return "Notes";
     }
@@ -72,6 +74,8 @@ export class DailyNoteView extends ItemView {
             return "folder";
         } else if (this.selectionMode === "tag") {
             return "tag";
+        } else if (this.selectionMode === "stream") {
+            return "history";
         }
         return "document";
     }
@@ -88,6 +92,10 @@ export class DailyNoteView extends ItemView {
         if (file instanceof TFile) this.view.fileRename(file, oldPath);
     };
 
+    onMetadataChanged = (file: TFile) => {
+        if (file instanceof TFile && this.view) this.view.metadataChanged(file);
+    };
+
     setSelectedRange(range: TimeRange) {
         this.selectedDaysRange = range;
         if (this.view) {
@@ -102,9 +110,13 @@ export class DailyNoteView extends ItemView {
         }
     }
 
-    setSelectionMode(mode: "daily" | "folder" | "tag", target: string = "") {
+    setSelectionMode(
+        mode: "daily" | "folder" | "tag" | "stream",
+        target: string = ""
+    ) {
         this.selectionMode = mode;
         this.target = target;
+        this.updateClockActionVisibility();
 
         if (this.view) {
             this.view.$set({
@@ -150,7 +162,7 @@ export class DailyNoteView extends ItemView {
         // Handle our custom state properties if they exist
         if (state && typeof state === "object" && !this.view) {
             const customState = state as {
-                selectionMode?: "daily" | "folder" | "tag";
+                selectionMode?: "daily" | "folder" | "tag" | "stream";
                 target?: string;
                 timeField?: TimeField;
                 selectedRange?: TimeRange;
@@ -158,15 +170,20 @@ export class DailyNoteView extends ItemView {
             };
 
             if (customState.selectionMode)
-                this.selectionMode = customState.selectionMode;
+                // Workspace state saved before the stream rename
+                this.selectionMode =
+                    customState.selectionMode === ("timeline" as never)
+                        ? "stream"
+                        : customState.selectionMode;
             if (customState.target) this.target = customState.target;
             if (customState.timeField) this.timeField = customState.timeField;
             if (customState.selectedRange)
                 this.selectedDaysRange = customState.selectedRange;
             if (customState.customRange)
                 this.customRange = customState.customRange;
-            // readerMode deliberately not restored: editing mode is always
-            // the default when a view opens
+            // Open honoring the persisted reader/editing preference so the
+            // toggle button icon and the rendered mode agree with the setting
+            this.readerMode = this.plugin.settings.readerMode;
 
             this.view = new DailyNoteEditorView({
                 target: this.contentEl,
@@ -183,12 +200,6 @@ export class DailyNoteView extends ItemView {
             });
 
             this.app.workspace.onLayoutReady(this.view.tick.bind(this));
-
-            this.registerInterval(
-                window.setInterval(async () => {
-                    this.view.check();
-                }, 1000 * 60 * 60)
-            );
         }
     }
 
@@ -224,7 +235,7 @@ export class DailyNoteView extends ItemView {
             // do-nothing
         });
 
-        this.addAction("clock", "Select time field", (e) => {
+        this.clockActionEl = this.addAction("clock", "Select time field", (e) => {
             const menu = new Menu();
 
             // Add time field selection options
@@ -256,7 +267,7 @@ export class DailyNoteView extends ItemView {
             // Add mode selection options
             const addModeOption = (
                 title: string,
-                mode: "daily" | "folder" | "tag"
+                mode: "daily" | "folder" | "tag" | "stream"
             ) => {
                 menu.addItem((item) => {
                     item.setTitle(title);
@@ -264,7 +275,7 @@ export class DailyNoteView extends ItemView {
                         this.selectionMode === mode && !this.target
                     );
                     item.onClick(() => {
-                        if (mode === "daily") {
+                        if (mode === "daily" || mode === "stream") {
                             this.setSelectionMode(mode);
                         } else {
                             // For folder and tag modes, we need to prompt for the target
@@ -284,6 +295,7 @@ export class DailyNoteView extends ItemView {
             };
 
             addModeOption("Daily Notes", "daily");
+            addModeOption("Journal Stream", "stream");
             addModeOption("Folder", "folder");
             addModeOption("Tag", "tag");
 
@@ -427,6 +439,18 @@ export class DailyNoteView extends ItemView {
         this.registerEvent(this.app.vault.on("create", this.onFileCreate));
         this.registerEvent(this.app.vault.on("delete", this.onFileDelete));
         this.registerEvent(this.app.vault.on("rename", this.onFileRename));
+        this.registerEvent(
+            this.app.metadataCache.on("changed", this.onMetadataChanged)
+        );
+
+        this.updateClockActionVisibility();
+    }
+
+    private clockActionEl: unknown;
+
+    private updateClockActionVisibility() {
+        const el = this.clockActionEl as unknown as HTMLElement;
+        if (el) el.style.display = this.selectionMode === "stream" ? "none" : "";
     }
 
     async onClose(): Promise<void> {

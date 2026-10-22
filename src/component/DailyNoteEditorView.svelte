@@ -8,6 +8,9 @@
     import { TimeRange, SelectionMode, TimeField } from "../types/time";
     import { onMount, onDestroy } from "svelte";
     import { FileManager, FileManagerOptions } from "../utils/fileManager";
+    import StreamDate from "./StreamDate.svelte";
+    import { JournalStreamIndex } from "../utils/journalStreamIndex";
+    import type { StreamEntry } from "../utils/journalStreamIndex";
 
 
     export let plugin: DailyNoteViewPlugin;
@@ -34,6 +37,9 @@
     let hasMore = true;
     let firstLoaded = true;
     let loaderRef: HTMLDivElement;
+
+    let streamIndex: JournalStreamIndex | null = null;
+    let renderedStreamEntries: StreamEntry[] = [];
 
     // Create the file manager
     let fileManager: FileManager;
@@ -73,6 +79,12 @@
         updateTitleElement();
     }
 
+    $: if (selectionMode === "stream") {
+        void selectedRange;
+        void customRange;
+        refreshStream();
+    }
+
     onMount(() => {
         fileManager = new FileManager(fileManagerOptions);
         filteredFiles = fileManager.getFilteredFiles();
@@ -82,6 +94,14 @@
         // Initialize the title element
         updateTitleElement();
     });
+
+    function refreshStream() {
+        const sources = plugin.settings.journalSources;
+        if (!streamIndex) streamIndex = new JournalStreamIndex(plugin.app, sources);
+        else streamIndex.setSources(sources);
+        streamIndex.rebuild();
+        renderedStreamEntries = streamIndex.getEntries(selectedRange, customRange);
+    }
 
     // Function to update the title element with range information
     function updateTitleElement() {
@@ -110,6 +130,14 @@
             titleText = `Showing files with tag: ${target}`;
             if (selectedRange !== 'all') {
                 titleText += ` (${timeField === 'ctime' ? 'created' : 'modified'} ${selectedRange})`;
+            }
+        } else if (selectionMode === "stream") {
+            if (selectedRange === 'custom' && customRange) {
+                titleText = `Journal Stream from ${moment(customRange.start).format('YYYY-MM-DD')} to ${moment(customRange.end).format('YYYY-MM-DD')}`;
+            } else if (selectedRange !== 'all') {
+                titleText = `Journal Stream (${selectedRange})`;
+            } else {
+                titleText = "Journal Stream";
             }
         }
         
@@ -194,6 +222,10 @@
     }
 
     export function check() {
+        if (selectionMode === "stream") {
+            refreshStream();
+            return;
+        }
         if (!fileManager) return;
         // Check if there's a new daily note (e.g., after day change)
         const hadDailyNote = fileManager.hasCurrentDayNote();
@@ -221,6 +253,10 @@
     }
 
     export function fileCreate(file: TFile) {
+        if (selectionMode === "stream") {
+            refreshStream();
+            return;
+        }
         fileManager.fileCreate(file);
 
         // Update the rendered files if needed
@@ -242,6 +278,10 @@
     }
 
     export function fileDelete(file: TFile) {
+        if (selectionMode === "stream") {
+            refreshStream();
+            return;
+        }
         fileManager.fileDelete(file);
 
         // Remove the file from rendered files if it exists
@@ -262,6 +302,10 @@
     }
 
     export function fileRename(file: TFile, oldPath: string) {
+        if (selectionMode === "stream") {
+            refreshStream();
+            return;
+        }
         if (visibleNotes.has(oldPath)) {
             visibleNotes.delete(oldPath);
             visibleNotes.add(file.path);
@@ -278,37 +322,52 @@
         }
         visibleNotes = visibleNotes;
     }
+
+    export function metadataChanged(file: TFile) {
+        if (selectionMode !== "stream" || !streamIndex) return;
+        if (streamIndex.matchesSource(file)) refreshStream();
+    }
 </script>
 
 <div class="daily-note-view">
-    {#if renderedFiles.length === 0}
+    {#if (selectionMode === "stream" ? renderedStreamEntries.length : renderedFiles.length) === 0}
         <div class="dn-stock">
             <div class="dn-stock-text">
                 No files found
             </div>
         </div>
     {/if}
-    {#each renderedFiles as file (file.path + (readerMode ? ':r' : ':s'))}
-        <div class="daily-note-wrapper" use:inview={{
-            rootMargin: "80%",
-            unobserveOnEnter: false,
+    {#if selectionMode === "stream"}
+        {#each renderedStreamEntries as entry (entry.date + (readerMode ? ':r' : ':s'))}
+            <div class="daily-note-wrapper">
+                <StreamDate entry={entry} plugin={plugin} leaf={leaf} readerMode={readerMode} />
+            </div>
+        {/each}
+    {:else}
+        {#each renderedFiles as file (file.path + (readerMode ? ':r' : ':s'))}
+            <div class="daily-note-wrapper" use:inview={{
+                rootMargin: "80%",
+                unobserveOnEnter: false,
+                root: leaf.view.contentEl
+            }} on:inview_change={({ detail }) => handleNoteVisibilityChange(file, detail.inView)}>
+                <DailyNote
+                    file={file}
+                    plugin={plugin}
+                    leaf={leaf}
+                    shouldRender={visibleNotes.has(file.path)}
+                    readerMode={readerMode}
+                />
+            </div>
+        {/each}
+    {/if}
+    {#if selectionMode !== "stream"}
+        <div bind:this={loaderRef} class="dn-view-loader" use:inview={{
             root: leaf.view.contentEl
-        }} on:inview_change={({ detail }) => handleNoteVisibilityChange(file, detail.inView)}>
-            <DailyNote
-                file={file}
-                plugin={plugin}
-                leaf={leaf}
-                shouldRender={visibleNotes.has(file.path)}
-                readerMode={readerMode}
-            />
-        </div>
-    {/each}
-    <div bind:this={loaderRef} class="dn-view-loader" use:inview={{
-        root: leaf.view.contentEl
-    }} on:inview_init={startFillViewport} on:inview_enter={startFillViewport} on:inview_change={infiniteHandler}
-         on:inview_leave={stopFillViewport}/>
-    {#if !hasMore}
-        <div class="no-more-text">—— No more of results ——</div>
+        }} on:inview_init={startFillViewport} on:inview_enter={startFillViewport} on:inview_change={infiniteHandler}
+             on:inview_leave={stopFillViewport}/>
+        {#if !hasMore}
+            <div class="no-more-text">—— No more of results ——</div>
+        {/if}
     {/if}
 </div>
 

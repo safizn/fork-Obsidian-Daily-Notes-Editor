@@ -7,6 +7,7 @@ import {
     DEFAULT_DAILY_NOTE_FORMAT,
 } from "obsidian-daily-notes-interface";
 import { TimeRange, TimeField } from "../types/time";
+import { isMomentInRange } from "./timeRange";
 
 export interface FileManagerOptions {
     mode: "daily" | "folder" | "tag";
@@ -262,53 +263,12 @@ export class FileManager {
         fileDate: moment.Moment,
         now: moment.Moment
     ): boolean {
-        switch (this.options.timeRange) {
-            case "week":
-                return fileDate.isSame(now, "week");
-            case "month":
-                return fileDate.isSame(now, "month");
-            case "year":
-                return fileDate.isSame(now, "year");
-            case "last-week":
-                return fileDate.isBetween(
-                    moment().subtract(1, "week").startOf("week"),
-                    moment().subtract(1, "week").endOf("week"),
-                    null,
-                    "[]"
-                );
-            case "last-month":
-                return fileDate.isBetween(
-                    moment().subtract(1, "month").startOf("month"),
-                    moment().subtract(1, "month").endOf("month"),
-                    null,
-                    "[]"
-                );
-            case "last-year":
-                return fileDate.isBetween(
-                    moment().subtract(1, "year").startOf("year"),
-                    moment().subtract(1, "year").endOf("year"),
-                    null,
-                    "[]"
-                );
-            case "quarter":
-                return fileDate.isSame(now, "quarter");
-            case "last-quarter":
-                return fileDate.isBetween(
-                    moment().subtract(1, "quarter").startOf("quarter"),
-                    moment().subtract(1, "quarter").endOf("quarter"),
-                    null,
-                    "[]"
-                );
-            case "custom":
-                if (this.options.customRange) {
-                    const startDate = moment(this.options.customRange.start);
-                    const endDate = moment(this.options.customRange.end);
-                    return fileDate.isBetween(startDate, endDate, null, "[]");
-                }
-                return false;
-            default:
-                return true;
-        }
+        return isMomentInRange(
+            fileDate,
+            now,
+            this.options.timeRange,
+            this.options.customRange
+        );
     }
 
     public checkDailyNote(): boolean {

@@ -9,6 +9,9 @@
     export let leaf: WorkspaceLeaf;
     export let shouldRender: boolean = true;
     export let readerMode: boolean = false;
+    // Stream entries carry the date on their own separator line; the
+    // note keeps only its collapse control
+    export let hideTitle: boolean = false;
 
     let editorEl: HTMLElement;
     let containerEl: HTMLElement;
@@ -175,10 +178,12 @@
 <div class="daily-note-container" data-id='dn-editor-{file.path}' bind:this={containerEl} style="min-height: {isCollapsed || rendered ? 'auto' : editorHeight + 'px'};">
     <div class="daily-note">
         {#if title}
-            <div class="daily-note-title inline-title">
-                <!-- svelte-ignore a11y-interactive-supports-focus -->
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <span role="link" class="clickable-link" on:click={handleFileIconClick} data-title={title}>{title}</span>
+            <div class="daily-note-title inline-title" class:no-caption={hideTitle}>
+                {#if !hideTitle}
+                    <!-- svelte-ignore a11y-interactive-supports-focus -->
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <span role="link" class="clickable-link" on:click={handleFileIconClick} data-title={title}>{title}</span>
+                {/if}
                 <!-- Collapse/Expand button -->
                 <!-- svelte-ignore a11y-interactive-supports-focus -->
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -248,6 +253,17 @@
         flex: 1;
     }
 
+    .daily-note-title.no-caption::before,
+    .daily-note-title.no-caption::after {
+        content: none;
+    }
+
+    .daily-note-title.no-caption {
+        margin-top: 0;
+        justify-content: flex-end;
+        min-height: 24px;
+    }
+
     .daily-note:has(.is-readable-line-width) .daily-note-title {
         max-width: calc(var(--file-line-width) + var(--size-4-4));
         width: calc(var(--file-line-width) + var(--size-4-4));
@@ -278,13 +294,13 @@
     }
 
     .clickable-link {
-        color: var(--text-accent);
+        color: var(--text-muted);
         cursor: pointer;
         text-decoration: none;
     }
 
     .clickable-link:hover {
-        color: var(--color-accent);
+        color: var(--text-normal);
         text-decoration: underline;
     }
     

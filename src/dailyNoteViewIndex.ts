@@ -300,13 +300,35 @@ export default class DailyNoteViewPlugin extends Plugin {
         const loaded = Object.assign(
             {},
             await this.loadData()
-        ) as Partial<DailyNoteSettings> & { createAndOpenOnStartup?: boolean };
+        ) as Partial<DailyNoteSettings> & {
+            createAndOpenOnStartup?: boolean;
+            timelineScanFolders?: string[];
+        };
 
         // Migrate createAndOpenOnStartup -> openOnStartup
         if (loaded.createAndOpenOnStartup !== undefined) {
             loaded.openOnStartup =
                 loaded.openOnStartup ?? loaded.createAndOpenOnStartup;
             delete loaded.createAndOpenOnStartup;
+        }
+
+        // Migrate timelineScanFolders -> journalSources: defaults first, then
+        // any folder not already covered becomes a document-form source
+        if (loaded.timelineScanFolders !== undefined) {
+            const byFolder = new Map(
+                DEFAULT_SETTINGS.journalSources.map((source) => [
+                    source.folder,
+                    source,
+                ])
+            );
+            for (const folder of loaded.timelineScanFolders) {
+                const clean = folder.trim().replace(/\/+$/, "");
+                if (clean && !byFolder.has(clean)) {
+                    byFolder.set(clean, { folder: clean, form: "document" });
+                }
+            }
+            loaded.journalSources = [...byFolder.values()];
+            delete loaded.timelineScanFolders;
         }
 
         this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
