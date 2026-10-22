@@ -29,7 +29,7 @@ export class DailyNoteView extends ItemView {
     scope: Scope;
 
     selectedDaysRange: TimeRange = "all";
-    selectionMode: "daily" | "folder" | "tag" | "stream" = "daily";
+    selectionMode: "daily" | "folder" | "tag" | "stream" = "stream";
     target: string = "";
     timeField: TimeField = "mtime";
     readerMode: boolean = false;
