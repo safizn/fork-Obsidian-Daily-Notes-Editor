@@ -12,3 +12,13 @@ export function typeHue(type: string): number {
     }
     return HUES[(h >>> 0) % HUES.length];
 }
+
+/* Spread order for indexed assignment (registered journals): maximally
+ * separated hues first — green, red, blue, orange, purple, then the
+ * remaining slots — so adjacent journals never sit near each other in
+ * the spectrum */
+const SPREAD = [105, 4, 230, 22, 260, 150, 330, 75, 290, 175, 40, 205];
+
+export function paletteHue(index: number): number {
+    return SPREAD[((index % SPREAD.length) + SPREAD.length) % SPREAD.length];
+}

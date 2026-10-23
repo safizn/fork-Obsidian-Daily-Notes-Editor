@@ -29,10 +29,14 @@ export class DailyNoteView extends ItemView {
     scope: Scope;
 
     selectedDaysRange: TimeRange = "all";
-    selectionMode: "daily" | "folder" | "tag" | "stream" = "stream";
+    selectionMode: "daily" | "journal" | "folder" | "tag" | "stream" | "day" = "stream";
     target: string = "";
     timeField: TimeField = "mtime";
     readerMode: boolean = false;
+    hiddenJournals: Set<string> = new Set();
+    private journalButtonEls: Map<string, HTMLElement> = new Map();
+    private dayNavEls: HTMLElement[] = [];
+    private createEntryEl: unknown;
 
     customRange: {
         start: Date;
@@ -61,8 +65,12 @@ export class DailyNoteView extends ItemView {
             return `Folder: ${this.target}`;
         } else if (this.selectionMode === "tag") {
             return `Tag: ${this.target}`;
+        } else if (this.selectionMode === "journal") {
+            return this.target || "Journal";
         } else if (this.selectionMode === "stream") {
-            return "Journal Stream";
+            return "Project Journal";
+        } else if (this.selectionMode === "day") {
+            return `Day: ${this.target}`;
         }
         return "Notes";
     }
@@ -111,12 +119,13 @@ export class DailyNoteView extends ItemView {
     }
 
     setSelectionMode(
-        mode: "daily" | "folder" | "tag" | "stream",
+        mode: "daily" | "journal" | "folder" | "tag" | "stream" | "day",
         target: string = ""
     ) {
         this.selectionMode = mode;
         this.target = target;
         this.updateClockActionVisibility();
+        this.updateJournalToggleVisibility();
 
         if (this.view) {
             this.view.$set({
@@ -154,6 +163,7 @@ export class DailyNoteView extends ItemView {
             timeField: this.timeField,
             selectedRange: this.selectedDaysRange,
             customRange: this.customRange,
+            hiddenJournals: [...this.hiddenJournals],
         };
     }
 
@@ -162,7 +172,7 @@ export class DailyNoteView extends ItemView {
         // Handle our custom state properties if they exist
         if (state && typeof state === "object" && !this.view) {
             const customState = state as {
-                selectionMode?: "daily" | "folder" | "tag" | "stream";
+                selectionMode?: "daily" | "journal" | "folder" | "tag" | "stream" | "day";
                 target?: string;
                 timeField?: TimeField;
                 selectedRange?: TimeRange;
@@ -181,6 +191,8 @@ export class DailyNoteView extends ItemView {
                 this.selectedDaysRange = customState.selectedRange;
             if (customState.customRange)
                 this.customRange = customState.customRange;
+            if (Array.isArray((state as any).hiddenJournals))
+                this.hiddenJournals = new Set((state as any).hiddenJournals);
             // Open honoring the persisted reader/editing preference so the
             // toggle button icon and the rendered mode agree with the setting
             this.readerMode = this.plugin.settings.readerMode;
@@ -196,6 +208,7 @@ export class DailyNoteView extends ItemView {
                     target: this.target,
                     timeField: this.timeField,
                     readerMode: this.readerMode,
+                    hiddenJournals: [...this.hiddenJournals],
                 },
             });
 
@@ -219,6 +232,17 @@ export class DailyNoteView extends ItemView {
 
     openDailyNoteEditor() {
         this.plugin.openDailyNoteEditor();
+    }
+
+    openJournalDate(name: string, folder: string, date: string) {
+        const file = this.app.vault.getAbstractFileByPath(
+            `${folder}/${date}.md`
+        );
+        if (!file) {
+            new Notice(`No ${name} entry for ${date}`);
+            return;
+        }
+        this.app.workspace.getLeaf(false).openFile(file);
     }
 
     openDailyNoteForDate(date: string) {
@@ -294,8 +318,26 @@ export class DailyNoteView extends ItemView {
                 });
             };
 
-            addModeOption("Daily Notes", "daily");
-            addModeOption("Journal Stream", "stream");
+            // one option per registered journal; the plain Daily Notes
+            // entry remains only when no journal is registered
+            const journals = this.plugin.registeredJournals || [];
+            if (journals.length === 0) {
+                addModeOption("Daily Notes", "daily");
+            } else {
+                for (const { name } of journals) {
+                    menu.addItem((item) => {
+                        item.setTitle(name);
+                        item.setChecked(
+                            this.selectionMode === "journal" &&
+                                this.target === name
+                        );
+                        item.onClick(() => {
+                            this.setSelectionMode("journal", name);
+                        });
+                    });
+                }
+            }
+            addModeOption("Project Journal", "stream");
             addModeOption("Folder", "folder");
             addModeOption("Tag", "tag");
 
@@ -416,11 +458,31 @@ export class DailyNoteView extends ItemView {
                 });
             });
 
+            const journals = this.plugin.registeredJournals || [];
+            if (journals.length > 0) {
+                menu.addSeparator();
+                menu.addItem((item) => {
+                    item.setTitle("Today in journal...");
+                    item.onClick(() => {
+                        const journalMenu = new Menu();
+                        const today = moment().format("YYYY-MM-DD");
+                        for (const { name, folder } of journals) {
+                            journalMenu.addItem((journalItem) => {
+                                journalItem.setTitle(name).onClick(() => {
+                                    this.openJournalDate(name, folder, today);
+                                });
+                            });
+                        }
+                        journalMenu.showAtMouseEvent(e);
+                    });
+                });
+            }
+
             menu.showAtMouseEvent(e);
         });
 
         const readerButton = this.addAction(
-            this.readerMode ? "book-open" : "pencil",
+            this.readerMode ? "pencil" : "book-open",
             "Toggle reader mode",
             () => {
                 this.plugin.settings.readerMode =
@@ -431,10 +493,36 @@ export class DailyNoteView extends ItemView {
                 // Obsidian build — setIcon() is the global, not a method
                 setIcon(
                     readerButton as unknown as HTMLElement,
-                    this.plugin.settings.readerMode ? "book-open" : "pencil"
+                    this.plugin.settings.readerMode ? "pencil" : "book-open"
                 );
             }
         );
+
+        this.createEntryEl = this.addAction(
+            "file-plus",
+            "Create journal entry for this day",
+            (event: MouseEvent) => this.openCreateEntryMenu(event)
+        ) as unknown as HTMLElement;
+        this.updateCreateEntryVisibility();
+
+        // header actions render right-to-left: next is added first so
+        // previous sits on the left of the pair
+        this.dayNavEls.push(
+            this.addAction(
+                "chevron-right",
+                "Next day with entries",
+                () => this.navigateDay(1)
+            ) as unknown as HTMLElement,
+            this.addAction(
+                "chevron-left",
+                "Previous day with entries",
+                () => this.navigateDay(-1)
+            ) as unknown as HTMLElement
+        );
+        this.updateDayNavVisibility();
+
+        this.addJournalToggleButtons();
+        this.updateJournalToggleVisibility();
 
         this.registerEvent(this.app.vault.on("create", this.onFileCreate));
         this.registerEvent(this.app.vault.on("delete", this.onFileDelete));
@@ -448,9 +536,157 @@ export class DailyNoteView extends ItemView {
 
     private clockActionEl: unknown;
 
+    /* journal toggles only make sense in the aggregate Project Journal
+     * view — a specific journal view shows exactly one journal */
+    private updateJournalToggleVisibility(): void {
+        const visible =
+            this.selectionMode === "stream" || this.selectionMode === "day";
+        for (const el of this.journalButtonEls.values()) {
+            el.style.display = visible ? "" : "none";
+        }
+    }
+
     private updateClockActionVisibility() {
         const el = this.clockActionEl as unknown as HTMLElement;
         if (el) el.style.display = this.selectionMode === "stream" ? "none" : "";
+    }
+
+    /* One show/hide toolbar button per journal registered in the
+     * Journals plugin; re-run once the plugin data has loaded */
+    refreshJournalButtons(): void {
+        this.addJournalToggleButtons();
+        this.updateJournalToggleVisibility();
+    }
+
+    private addJournalToggleButtons(): void {
+        for (const { name } of this.plugin.registeredJournals || []) {
+            if (this.journalButtonEls.has(name)) continue;
+            const el = this.addAction(
+                "eye",
+                `Toggle ${name} journal`,
+                () => this.toggleJournal(name)
+            ) as unknown as HTMLElement;
+            el.classList.add("dn-journal-toggle");
+            // rebuild the content: icon in its own span (setIcon replaces
+            // an element's children — it must never touch the label), and
+            // the journal name beside it, struck through while hidden
+            const doc = el.ownerDocument;
+            const iconEl = doc.createElement("span");
+            iconEl.className = "dn-journal-toggle-icon";
+            const label = doc.createElement("span");
+            label.className = "dn-journal-toggle-label";
+            label.textContent = name;
+            el.replaceChildren(iconEl, label);
+            this.journalButtonEls.set(name, el);
+            this.refreshJournalButtonStates();
+        }
+    }
+
+    private refreshJournalButtonStates(): void {
+        for (const [name, el] of this.journalButtonEls) {
+            const hidden = this.hiddenJournals.has(name);
+            const iconEl = el.querySelector(".dn-journal-toggle-icon");
+            if (iconEl) setIcon(iconEl, hidden ? "eye-off" : "eye");
+            el.querySelector(".dn-journal-toggle-label")?.classList.toggle(
+                "is-hidden",
+                hidden
+            );
+        }
+    }
+
+    private toggleJournal(name: string): void {
+        if (this.hiddenJournals.has(name)) this.hiddenJournals.delete(name);
+        else this.hiddenJournals.add(name);
+        this.refreshJournalButtonStates();
+        this.view?.$set({ hiddenJournals: [...this.hiddenJournals] });
+    }
+
+    /* Day stream view: one date's journals + activities */
+    openDay(date: string): void {
+        this.selectionMode = "day";
+        this.target = date;
+        this.updateClockActionVisibility();
+        this.updateJournalToggleVisibility();
+        this.updateDayNavVisibility();
+        this.updateCreateEntryVisibility();
+        if (this.view) {
+            this.view.$set({ selectionMode: "day", target: date });
+        }
+        this.refreshHeader();
+    }
+
+    /* The tab header caches getDisplayText — re-applying the state
+     * makes Obsidian rebuild it (same view type: no reload, the
+     * Svelte view survives behind its !this.view guard) */
+    private refreshHeader(): void {
+        this.leaf?.setViewState({
+            type: DAILY_NOTE_VIEW_TYPE,
+            state: this.getState(),
+        });
+    }
+
+    /* prev/next land on the nearest date carrying any content */
+    navigateDay(direction: number): void {
+        if (this.selectionMode !== "day" || !this.view) return;
+        const dates = this.view.getStreamDates();
+        if (!dates.length) return;
+        // dates are newest-first: -1 = older (left), +1 = newer (right)
+        const ordered = direction < 0 ? dates : [...dates].reverse();
+        const next = ordered.find(
+            (date) =>
+                direction < 0 ? date < this.target : date > this.target
+        );
+        if (next) this.openDay(next);
+    }
+
+    /* Day mode: create the shown date's entry for a journal that
+     * lacks one */
+    private openCreateEntryMenu(event: MouseEvent): void {
+        if (this.selectionMode !== "day" || !this.view) return;
+        const missing = this.view.missingJournals();
+        if (missing.length === 0) {
+            new Notice("Every visible journal has an entry for this day.");
+            return;
+        }
+        const menu = new Menu();
+        for (const name of missing) {
+            menu.addItem((item) =>
+                item.setTitle(name).onClick(() => this.view?.createJournalEntry(name))
+            );
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private updateCreateEntryVisibility(): void {
+        const el = this.createEntryEl as unknown as HTMLElement;
+        if (el) el.style.display = this.selectionMode === "day" ? "" : "none";
+    }
+
+    private updateDayNavVisibility(): void {
+        const visible = this.selectionMode === "day";
+        for (const el of this.dayNavEls) el.style.display = visible ? "" : "none";
+    }
+
+    /* Scoped entry point for other plugins (okf-bundle-navigator
+     * badges): the Project Journal with every journal but the named
+     * one hidden */
+    focusProjectJournal(visibleJournal: string): void {
+        this.selectionMode = "stream";
+        this.hiddenJournals = new Set(
+            (this.plugin.registeredJournals || [])
+                .map((journal) => journal.name)
+                .filter((name) => name !== visibleJournal)
+        );
+        this.refreshJournalButtonStates();
+        this.updateClockActionVisibility();
+        this.updateJournalToggleVisibility();
+        if (this.view) {
+            this.view.$set({
+                selectionMode: "stream",
+                hiddenJournals: [...this.hiddenJournals],
+            });
+        }
+        this.refreshHeader();
     }
 
     async onClose(): Promise<void> {

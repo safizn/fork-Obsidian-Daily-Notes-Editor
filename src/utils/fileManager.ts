@@ -10,8 +10,10 @@ import { TimeRange, TimeField } from "../types/time";
 import { isMomentInRange } from "./timeRange";
 
 export interface FileManagerOptions {
-    mode: "daily" | "folder" | "tag";
+    mode: "daily" | "journal" | "folder" | "tag";
     target?: string;
+    /* registered Journals-plugin journals, for journal mode */
+    journals?: { name: string; folder: string }[];
     timeRange?: TimeRange;
     customRange?: { start: Date; end: Date } | null;
     app?: App;
@@ -85,6 +87,9 @@ export class FileManager {
             case "daily":
                 this.fetchDailyNotes();
                 break;
+            case "journal":
+                this.fetchJournalFiles();
+                break;
             case "folder":
                 this.fetchFolderFiles();
                 break;
@@ -132,6 +137,26 @@ export class FileManager {
                 );
             }
         }
+    }
+
+    /* Journal mode: the target names a registered journal; its dated
+     * entries list newest-first like daily notes */
+    private fetchJournalFiles(): void {
+        const journal = (this.options.journals || []).find(
+            (j) => j.name === this.options.target
+        );
+        this.allFiles = [];
+        if (!journal) return;
+        const prefix = journal.folder + "/";
+        this.allFiles = this.options.app.vault
+            .getMarkdownFiles()
+            .filter(
+                (file) =>
+                    (file.parent?.path ?? "") === journal.folder ||
+                    (file.parent?.path ?? "").startsWith(prefix)
+            )
+            .filter((file) => /^\d{4}-\d{2}-\d{2}\.md$/.test(file.name))
+            .sort((a, b) => b.basename.localeCompare(a.basename));
     }
 
     private fetchFolderFiles(): void {
@@ -198,8 +223,8 @@ export class FileManager {
         }
 
         // Use different filtering methods based on different modes
-        if (this.options.mode === "daily") {
-            // Daily mode: filter daily notes by date
+        if (this.options.mode === "daily" || this.options.mode === "journal") {
+            // Daily/journal modes: filter dated entries by their basename date
             this.filterDailyNotesByRange();
         } else {
             // Folder and tag modes: filter files by creation or modification time
@@ -247,7 +272,10 @@ export class FileManager {
             getDailyNoteSettings().format || DEFAULT_DAILY_NOTE_FORMAT;
 
         this.filteredFiles = this.allFiles.filter((file) => {
-            const fileDate = moment(file.basename, fileFormat);
+            const fileDate =
+                this.options.mode === "journal"
+                    ? moment(file.basename, "YYYY-MM-DD")
+                    : moment(file.basename, fileFormat);
 
             return this.isDateInRange(fileDate, now);
         });
@@ -272,7 +300,7 @@ export class FileManager {
     }
 
     public checkDailyNote(): boolean {
-        if (this.options.mode !== "daily") {
+        if (this.options.mode !== "daily" && this.options.mode !== "journal") {
             this.hasCurrentDay = true;
             return true;
         }
@@ -308,6 +336,9 @@ export class FileManager {
     public fileCreate(file: TFile): void {
         if (this.options.mode === "daily") {
             this.handleDailyNoteCreate(file);
+        } else if (this.options.mode === "journal") {
+            this.fetchJournalFiles();
+            this.filterFilesByRange();
         } else if (this.options.mode === "folder") {
             this.handleFolderFileCreate(file);
         } else if (this.options.mode === "tag") {
@@ -461,6 +492,13 @@ export class FileManager {
 
     public hasCurrentDayNote(): boolean {
         return this.hasCurrentDay;
+    }
+
+    /* Re-run the mode fetch — used when the Journals plugin registry
+     * finishes loading after the view exists */
+    public refetch(): void {
+        this.hasFetched = false;
+        this.fetchFiles();
     }
 
     public updateOptions(options: Partial<FileManagerOptions>): void {

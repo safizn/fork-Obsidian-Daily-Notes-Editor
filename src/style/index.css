@@ -112,6 +112,15 @@ body.daily-notes-hide-frontmatter .dn-editor .metadata-container {
     flex-direction: column;
     gap: var(--size-4-4);
     overflow-x: hidden;
+    /* content inset lives here so the date separator can escape it and
+     * run edge-to-edge */
+    padding-inline: var(--size-4-4);
+}
+
+/* the editor view owns its own inline inset — theme .view-content
+   padding would gap the separator line */
+.workspace-leaf-content[data-type="daily-note-editor-view"] .view-content {
+    padding: 0 !important;
 }
 
 body.daily-notes-hide-frontmatter
@@ -254,8 +263,10 @@ body.daily-notes-hide-backlinks .daily-note-view .embedded-backlinks {
 .stream-doc-list {
     list-style: none;
     padding: 0;
-    padding-left: var(--size-4-3);
-    margin: var(--size-4-2) 0 var(--size-4-8);
+    /* escaped inset + gap, so links keep their line position */
+    padding-left: calc(var(--size-4-4) + var(--size-4-3));
+    /* rule flush with the page edges — zero inset */
+    margin: var(--size-4-2) calc(var(--size-4-4) * -1) var(--size-4-8);
     border-left: 2px solid color-mix(in srgb, var(--text-faint) 45%, transparent);
     display: flex;
     flex-direction: column;
@@ -279,3 +290,23 @@ body.daily-notes-hide-backlinks .daily-note-view .embedded-backlinks {
     margin-bottom: var(--size-4-4);
 }
 
+
+/* Project Journal per-journal toolbar toggles: name beside the icon,
+   struck through while hidden */
+.dn-journal-toggle .dn-journal-toggle-label {
+    margin-left: var(--size-2-2);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.dn-journal-toggle .dn-journal-toggle-label.is-hidden {
+    color: var(--text-faint);
+    text-decoration: line-through;
+}
+
+/* Day view empty state: create the date's entry in a chosen journal */
+.dn-create-entry {
+    margin-left: var(--size-4-2);
+    cursor: pointer;
+}

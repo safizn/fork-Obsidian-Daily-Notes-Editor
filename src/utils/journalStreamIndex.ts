@@ -1,9 +1,4 @@
 import { App, TFile, moment } from "obsidian";
-import {
-    getAllDailyNotes,
-    getDailyNoteSettings,
-    DEFAULT_DAILY_NOTE_FORMAT,
-} from "obsidian-daily-notes-interface";
 import { TimeRange } from "../types/time";
 import { isMomentInRange } from "./timeRange";
 
@@ -12,8 +7,14 @@ export interface JournalSource {
     form: "journal" | "document";
 }
 
+/* A journal registered in the Obsidian Journals plugin */
+export interface RegisteredJournal {
+    name: string;
+    folder: string;
+}
+
 export interface StreamJournalGroup {
-    /* Source display name: folder basename */
+    /* Journal display name (Journals-plugin name, or folder basename) */
     name: string;
     files: TFile[];
 }
@@ -21,8 +22,7 @@ export interface StreamJournalGroup {
 export interface StreamEntry {
     /* ISO date key (YYYY-MM-DD) the entry is filed under */
     date: string;
-    dailyNote: TFile | null;
-    /* Embedded journal entries, grouped per source in source-list order */
+    /* Embedded journal entries, grouped per journal in registration order */
     journals: StreamJournalGroup[];
     /* Documents created that date, linked as activities */
     docs: TFile[];
@@ -48,16 +48,20 @@ export function streamDocType(app: App, file: TFile): string | null {
     return null;
 }
 
-/* Created-date index over the configured sources. All data comes from
- * metadataCache (no disk reads), so a full rebuild is cheap and every
- * vault/metadata event rebuilds instead of polling. A file under nested
- * sources belongs to the most specific (longest) matching folder. */
+const DATE_FILE = /^\d{4}-\d{2}-\d{2}\.md$/;
+
+/* Created-date index over the configured sources and registered
+ * journals. All data comes from metadataCache and the vault file list
+ * (no disk reads), so a full rebuild is cheap and every vault/metadata
+ * event rebuilds instead of polling. A file under nested sources
+ * belongs to the most specific (longest) matching folder. */
 export class JournalStreamIndex {
     private app: App;
     private sources: JournalSource[];
+    private journals: RegisteredJournal[] = [];
     private journalFilesByDate = new Map<
         string,
-        Array<{ folder: string; file: TFile }>
+        Array<{ name: string; file: TFile }>
     >();
     private docFilesByDate = new Map<string, TFile[]>();
 
@@ -70,6 +74,10 @@ export class JournalStreamIndex {
         this.sources = sources;
     }
 
+    setJournals(journals: RegisteredJournal[]): void {
+        this.journals = journals;
+    }
+
     matchesSource(file: TFile): boolean {
         return this.matchSource(file) !== null;
     }
@@ -78,7 +86,25 @@ export class JournalStreamIndex {
         this.journalFilesByDate = new Map();
         this.docFilesByDate = new Map();
 
+        const journalFolders = new Map<string, string>(); // folder -> name
+        for (const journal of this.journals) {
+            if (journal.folder) {
+                journalFolders.set(journal.folder.replace(/\/+$/, ""), journal.name);
+            }
+        }
+
         for (const file of this.app.vault.getMarkdownFiles()) {
+            const parentPath = file.parent?.path ?? "/";
+
+            const journalName = journalFolders.get(parentPath);
+            if (journalName) {
+                if (!DATE_FILE.test(file.name)) continue;
+                const files = this.journalFilesByDate.get(file.basename);
+                if (files) files.push({ name: journalName, file });
+                else this.journalFilesByDate.set(file.basename, [{ name: journalName, file }]);
+                continue;
+            }
+
             const source = this.matchSource(file);
             if (!source) continue;
             const created = this.createdDateOf(file);
@@ -86,8 +112,8 @@ export class JournalStreamIndex {
 
             if (source.form === "journal") {
                 const files = this.journalFilesByDate.get(created);
-                if (files) files.push({ folder: source.folder, file });
-                else this.journalFilesByDate.set(created, [{ folder: source.folder, file }]);
+                if (files) files.push({ name: basename(source.folder), file });
+                else this.journalFilesByDate.set(created, [{ name: basename(source.folder), file }]);
             } else {
                 const files = this.docFilesByDate.get(created);
                 if (files) files.push(file);
@@ -106,48 +132,61 @@ export class JournalStreamIndex {
 
     getEntries(
         timeRange: TimeRange,
-        customRange: { start: Date; end: Date } | null
+        customRange: { start: Date; end: Date } | null,
+        hiddenJournals: Set<string> = new Set()
     ): StreamEntry[] {
-        const format =
-            getDailyNoteSettings().format || DEFAULT_DAILY_NOTE_FORMAT;
         const now = moment();
         const byDate = new Map<string, StreamEntry>();
 
-        for (const [key, dailyNote] of Object.entries(
-            getAllDailyNotes()
-        ) as [string, TFile][]) {
-            const date = moment(key, format).format("YYYY-MM-DD");
-            byDate.set(date, { date, dailyNote, journals: [], docs: [] });
+        const entryOf = (date: string): StreamEntry => {
+            let entry = byDate.get(date);
+            if (!entry) {
+                entry = { date, journals: [], docs: [] };
+                byDate.set(date, entry);
+            }
+            return entry;
+        };
+
+        // registered journals first (registration order), then journal-form
+        // sources — both grouped by name, hidden journals skipped
+        for (const [date, journalFiles] of this.journalFilesByDate) {
+            const groups = new Map<string, TFile[]>();
+            for (const item of journalFiles) {
+                if (hiddenJournals.has(item.name)) continue;
+                const files = groups.get(item.name);
+                if (files) files.push(item.file);
+                else groups.set(item.name, [item.file]);
+            }
+            if (groups.size === 0) continue;
+            const entry = entryOf(date);
+            for (const [name, files] of groups) {
+                files.sort((a, b) => a.basename.localeCompare(b.basename));
+                entry.journals.push({ name, files });
+            }
         }
 
-        for (const [date, journalFiles] of this.journalFilesByDate) {
-            const entry = this.getOrCreateEntry(byDate, date);
-            const byFolder = new Map<string, TFile[]>();
-            for (const { folder, file } of journalFiles) {
-                const files = byFolder.get(folder);
-                if (files) files.push(file);
-                else byFolder.set(folder, [file]);
-            }
-            for (const source of this.sources) {
-                const files = byFolder.get(source.folder);
-                if (!files) continue;
-                files.sort((a, b) =>
-                    streamDocTitle(this.app, a).localeCompare(
-                        streamDocTitle(this.app, b)
-                    )
-                );
-                entry.journals.push({
-                    name: basename(source.folder),
-                    files,
-                });
-            }
-        }
+        // hiding a journal hides its whole bundle: activities under the
+        // journal's bundle root go with it
+        const hiddenRoots = this.journals
+            .filter((journal) => hiddenJournals.has(journal.name))
+            .map((journal) => journal.folder.replace(/\/journal$/, ""))
+            .filter((root) => root.length > 0);
 
         for (const [date, files] of this.docFilesByDate) {
-            this.getOrCreateEntry(byDate, date).docs = files;
+            const docs = files.filter(
+                (file) =>
+                    !hiddenRoots.some(
+                        (root) =>
+                            file.path === root || file.path.startsWith(root + "/")
+                    )
+            );
+            if (docs.length > 0) entryOf(date).docs = docs;
         }
 
         const entries = [...byDate.values()].filter((entry) =>
+            entry.journals.length > 0 || entry.docs.length > 0
+        );
+        const filtered = entries.filter((entry) =>
             isMomentInRange(
                 moment(entry.date, "YYYY-MM-DD"),
                 now,
@@ -155,20 +194,16 @@ export class JournalStreamIndex {
                 customRange
             )
         );
-        entries.sort((a, b) => b.date.localeCompare(a.date));
-        return entries;
+        filtered.sort((a, b) => b.date.localeCompare(a.date));
+        return filtered;
     }
 
-    private getOrCreateEntry(
-        byDate: Map<string, StreamEntry>,
-        date: string
-    ): StreamEntry {
-        let entry = byDate.get(date);
-        if (!entry) {
-            entry = { date, dailyNote: null, journals: [], docs: [] };
-            byDate.set(date, entry);
-        }
-        return entry;
+    /* Every date carrying content (journal entry or activity), newest
+     * first — the day view's prev/next landing dates */
+    allDates(): string[] {
+        const dates = new Set<string>(this.journalFilesByDate.keys());
+        for (const date of this.docFilesByDate.keys()) dates.add(date);
+        return [...dates].sort((a, b) => b.localeCompare(a));
     }
 
     private matchSource(file: TFile): JournalSource | null {

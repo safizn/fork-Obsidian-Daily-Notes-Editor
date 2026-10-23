@@ -2,7 +2,7 @@
     import type DailyNoteViewPlugin from "../dailyNoteViewIndex";
     import type { WorkspaceLeaf } from "obsidian";
 
-    import { TFile, moment } from "obsidian";
+    import { TFile, moment, Menu } from "obsidian";
     import DailyNote from "./DailyNote.svelte";
     import { inview } from "svelte-inview";
     import { TimeRange, SelectionMode, TimeField } from "../types/time";
@@ -21,6 +21,7 @@
     export let target: string = "";
     export let timeField: TimeField = "mtime"; // 默认使用修改时间
     export let readerMode: boolean = false;
+    export let hiddenJournals: string[] = [];
 
     const size = 1;
     let intervalId;
@@ -50,7 +51,8 @@
         timeRange: selectedRange,
         customRange: customRange,
         app: plugin.app,
-        timeField: timeField
+        timeField: timeField,
+        journals: plugin.registeredJournals
     } as FileManagerOptions;
 
     $: if (fileManager && (selectedRange !== fileManager.options.timeRange || 
@@ -63,7 +65,8 @@
             customRange: customRange,
             mode: selectionMode,
             target: target,
-            timeField: timeField
+            timeField: timeField,
+            journals: plugin.registeredJournals
         });
         
         // Reset rendered files and start filling viewport again
@@ -79,10 +82,13 @@
         updateTitleElement();
     }
 
-    $: if (selectionMode === "stream") {
+    $: if (selectionMode === "stream" || selectionMode === "day") {
         void selectedRange;
         void customRange;
+        void hiddenJournals;
+        void target;
         refreshStream();
+        updateTitleElement();
     }
 
     onMount(() => {
@@ -99,8 +105,73 @@
         const sources = plugin.settings.journalSources;
         if (!streamIndex) streamIndex = new JournalStreamIndex(plugin.app, sources);
         else streamIndex.setSources(sources);
+        streamIndex.setJournals(plugin.registeredJournals || []);
         streamIndex.rebuild();
-        renderedStreamEntries = streamIndex.getEntries(selectedRange, customRange);
+        let entries = streamIndex.getEntries(
+            "all",
+            null,
+            new Set(hiddenJournals)
+        );
+        if (selectionMode === "day") {
+            entries = entries.filter((entry) => entry.date === target);
+        }
+        renderedStreamEntries = entries;
+    }
+
+    /* Create the day's entry in a chosen journal, Journals-plugin
+     * shape (template body + journal/journal-date frontmatter); the
+     * vault create event refreshes the stream */
+    export async function createJournalEntry(journalName: string) {
+        const journal = (plugin.registeredJournals || []).find(
+            (j) => j.name === journalName
+        );
+        if (!journal || !target) return;
+        const path = `${journal.folder}/${target}.md`;
+        if (plugin.app.vault.getAbstractFileByPath(path)) return;
+
+        let body = "";
+        const tpl = plugin.app.vault.getAbstractFileByPath(
+            "templates/empty-journal-entry.md"
+        );
+        if (tpl instanceof TFile) {
+            const raw = await plugin.app.vault.cachedRead(tpl);
+            const end = raw.indexOf("---", 3);
+            body = end >= 0 ? raw.slice(end + 3) : raw;
+        }
+        const content = `---\ntype: Journal Entry\njournal: ${journalName}\njournal-date: ${target}\n---${body}`;
+        try {
+            await plugin.app.vault.create(path, content);
+        } catch (error) {
+            console.error("Error creating journal entry:", error);
+        }
+    }
+
+    function openCreateMenu(event: MouseEvent) {
+        const menu = new Menu();
+        for (const { name } of plugin.registeredJournals || []) {
+            if (hiddenJournals.includes(name)) continue;
+            menu.addItem((item) =>
+                item.setTitle(name).onClick(() => createJournalEntry(name))
+            );
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    /* Visible journals without an entry for the shown day */
+    export function missingJournals(): string[] {
+        const present = new Set(
+            (renderedStreamEntries[0]?.journals || []).map((g) => g.name)
+        );
+        return (plugin.registeredJournals || [])
+            .map((journal) => journal.name)
+            .filter(
+                (name) => !hiddenJournals.includes(name) && !present.has(name)
+            );
+    }
+
+    export function getStreamDates(): string[] {
+        if (!streamIndex) return [];
+        return streamIndex.allDates();
     }
 
     // Function to update the title element with range information
@@ -121,6 +192,13 @@
             } else {
                 titleText = `Showing notes for: ${selectedRange}`;
             }
+        } else if (selectionMode === "day") {
+            titleText = `Day — ${target}`;
+        } else if (selectionMode === "journal") {
+            titleText = `Journal: ${target}`;
+            if (selectedRange !== 'all') {
+                titleText += ` (${selectedRange})`;
+            }
         } else if (selectionMode === "folder") {
             titleText = `Showing files from folder: ${target}`;
             if (selectedRange !== 'all') {
@@ -133,11 +211,11 @@
             }
         } else if (selectionMode === "stream") {
             if (selectedRange === 'custom' && customRange) {
-                titleText = `Journal Stream from ${moment(customRange.start).format('YYYY-MM-DD')} to ${moment(customRange.end).format('YYYY-MM-DD')}`;
+                titleText = `Project Journal from ${moment(customRange.start).format('YYYY-MM-DD')} to ${moment(customRange.end).format('YYYY-MM-DD')}`;
             } else if (selectedRange !== 'all') {
-                titleText = `Journal Stream (${selectedRange})`;
+                titleText = `Project Journal (${selectedRange})`;
             } else {
-                titleText = "Journal Stream";
+                titleText = "Project Journal";
             }
         }
         
@@ -222,11 +300,20 @@
     }
 
     export function check() {
-        if (selectionMode === "stream") {
+        if (selectionMode === "stream" || selectionMode === "day") {
             refreshStream();
             return;
         }
         if (!fileManager) return;
+        if (selectionMode === "journal" && fileManager.options.journals !== plugin.registeredJournals) {
+            fileManager.refetch();
+            filteredFiles = fileManager.getFilteredFiles();
+            renderedFiles = [];
+            hasMore = filteredFiles.length > 0;
+            firstLoaded = true;
+            startFillViewport();
+            return;
+        }
         // Check if there's a new daily note (e.g., after day change)
         const hadDailyNote = fileManager.hasCurrentDayNote();
         fileManager.checkDailyNote();
@@ -242,7 +329,7 @@
             filteredFiles = fileManager.getFilteredFiles();
             
             // Reset rendered files and start filling viewport again if in daily mode
-            if (selectionMode === "daily") {
+            if (selectionMode === "daily" || selectionMode === "journal") {
                 renderedFiles = [];
                 visibleNotes.clear();
                 hasMore = filteredFiles.length > 0;
@@ -253,14 +340,14 @@
     }
 
     export function fileCreate(file: TFile) {
-        if (selectionMode === "stream") {
+        if (selectionMode === "stream" || selectionMode === "day") {
             refreshStream();
             return;
         }
         fileManager.fileCreate(file);
 
         // Update the rendered files if needed
-        if (selectionMode === "daily") {
+        if (selectionMode === "daily" || selectionMode === "journal") {
             // Drop the new note from the pending queue so it cannot be
             // double-added (prepend below + later splice)
             filteredFiles = filteredFiles.filter(f => f.basename !== file.basename);
@@ -278,7 +365,7 @@
     }
 
     export function fileDelete(file: TFile) {
-        if (selectionMode === "stream") {
+        if (selectionMode === "stream" || selectionMode === "day") {
             refreshStream();
             return;
         }
@@ -302,7 +389,7 @@
     }
 
     export function fileRename(file: TFile, oldPath: string) {
-        if (selectionMode === "stream") {
+        if (selectionMode === "stream" || selectionMode === "day") {
             refreshStream();
             return;
         }
@@ -324,20 +411,29 @@
     }
 
     export function metadataChanged(file: TFile) {
-        if (selectionMode !== "stream" || !streamIndex) return;
+        if ((selectionMode !== "stream" && selectionMode !== "day") || !streamIndex) return;
         if (streamIndex.matchesSource(file)) refreshStream();
     }
 </script>
 
 <div class="daily-note-view">
-    {#if (selectionMode === "stream" ? renderedStreamEntries.length : renderedFiles.length) === 0}
-        <div class="dn-stock">
-            <div class="dn-stock-text">
-                No files found
+    {#if ((selectionMode === "stream" || selectionMode === "day") ? renderedStreamEntries.length : renderedFiles.length) === 0}
+        {#if selectionMode === "day"}
+            <div class="dn-stock">
+                <div class="dn-stock-text">
+                    No journal entries for {target}
+                    <button class="dn-create-entry" on:click={openCreateMenu}>Create journal entry</button>
+                </div>
             </div>
-        </div>
+        {:else}
+            <div class="dn-stock">
+                <div class="dn-stock-text">
+                    No files found
+                </div>
+            </div>
+        {/if}
     {/if}
-    {#if selectionMode === "stream"}
+    {#if selectionMode === "stream" || selectionMode === "day"}
         {#each renderedStreamEntries as entry (entry.date + (readerMode ? ':r' : ':s'))}
             <div class="daily-note-wrapper">
                 <StreamDate entry={entry} plugin={plugin} leaf={leaf} readerMode={readerMode} />
@@ -360,7 +456,7 @@
             </div>
         {/each}
     {/if}
-    {#if selectionMode !== "stream"}
+    {#if selectionMode !== "stream" && selectionMode !== "day"}
         <div bind:this={loaderRef} class="dn-view-loader" use:inview={{
             root: leaf.view.contentEl
         }} on:inview_init={startFillViewport} on:inview_enter={startFillViewport} on:inview_change={infiniteHandler}

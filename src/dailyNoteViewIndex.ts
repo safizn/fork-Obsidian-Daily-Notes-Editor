@@ -32,9 +32,46 @@ export default class DailyNoteViewPlugin extends Plugin {
 
     settings: DailyNoteSettings;
 
+    /* Journals registered in the Obsidian Journals plugin (name + folder),
+     * the single source for journal identity across plugins */
+    registeredJournals: { name: string; folder: string }[] = [];
+
+    async loadRegisteredJournals(): Promise<void> {
+        try {
+            const journalsPlugin = (this.app as any).plugins?.plugins?.[
+                "journals"
+            ];
+            const data = journalsPlugin
+                ? await journalsPlugin.loadData()
+                : null;
+            const journals = data?.journals;
+            if (journals && typeof journals === "object") {
+                this.registeredJournals = Object.values(journals)
+                    .filter((j: any) => j && typeof j.folder === "string" && j.folder)
+                    .map((j: any) => ({
+                        name: String(j.name || j.folder),
+                        folder: String(j.folder).replace(/\/+$/, ""),
+                    }));
+            }
+        } catch {
+            /* journals plugin absent or unreadable — stream runs on settings sources alone */
+        }
+    }
+
     async onload() {
         this.addSettingTab(new DailyNoteSettingTab(this.app, this));
         await this.loadSettings();
+        this.app.workspace.onLayoutReady(() => {
+            this.loadRegisteredJournals().then(() => {
+                for (const leaf of this.app.workspace.getLeavesOfType(
+                    DAILY_NOTE_VIEW_TYPE
+                )) {
+                    const view = leaf.view as DailyNoteView;
+                    view.refreshJournalButtons?.();
+                    view.view?.check?.();
+                }
+            });
+        });
         this.patchWorkspace();
         this.patchWorkspaceLeaf();
         addIconList();
@@ -105,6 +142,40 @@ export default class DailyNoteViewPlugin extends Plugin {
         this.app.workspace.detachLeavesOfType(DAILY_NOTE_VIEW_TYPE);
         document.body.toggleClass("daily-notes-hide-frontmatter", false);
         document.body.toggleClass("daily-notes-hide-backlinks", false);
+    }
+
+    /* Open (or focus) the Project Journal with every journal but the
+     * named one hidden — the okf-bundle-navigator badges call this */
+    async openProjectJournal(visibleJournal: string) {
+        const workspace = this.app.workspace;
+        let leaf = workspace.getLeavesOfType(DAILY_NOTE_VIEW_TYPE)[0];
+        if (!leaf) {
+            leaf = workspace.getLeaf(true);
+            await leaf.setViewState({ type: DAILY_NOTE_VIEW_TYPE });
+        } else {
+            await workspace.revealLeaf(leaf);
+        }
+        const view = leaf.view as DailyNoteView;
+        view.focusProjectJournal(visibleJournal);
+    }
+
+    /* Open (or focus) the single-day stream view — the okf-bundle-
+     * navigator calendar calls this; one dedicated day leaf is reused */
+    async openDayJournal(date: string) {
+        const workspace = this.app.workspace;
+        let leaf = workspace
+            .getLeavesOfType(DAILY_NOTE_VIEW_TYPE)
+            .find(
+                (l) => (l.view as DailyNoteView).selectionMode === "day"
+            );
+        if (!leaf) {
+            leaf = workspace.getLeaf(true);
+            await leaf.setViewState({ type: DAILY_NOTE_VIEW_TYPE });
+        } else {
+            await workspace.revealLeaf(leaf);
+        }
+        const view = leaf.view as DailyNoteView;
+        view.openDay(date);
     }
 
     async openDailyNoteEditor() {

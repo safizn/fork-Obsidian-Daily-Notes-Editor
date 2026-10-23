@@ -27,8 +27,8 @@ export const DEFAULT_SETTINGS: DailyNoteSettings = {
         { folder: "doc-product/retrospective", form: "journal" },
         { folder: "doc-spec", form: "document" },
         { folder: "doc-product", form: "document" },
-        { folder: "doc-journal/work", form: "document" },
-        { folder: "doc-journal/reference", form: "document" },
+        { folder: "doc-work/session", form: "document" },
+        { folder: "doc-work/reference", form: "document" },
     ],
     preset: [],
 };
@@ -119,11 +119,11 @@ export class DailyNoteSettingTab extends PluginSettingTab {
                     })
             );
 
-        new Setting(containerEl).setName("Journal Stream sources").setHeading();
+        new Setting(containerEl).setName("Project Journal sources").setHeading();
         new Setting(containerEl)
-            .setName("Journal Stream sources")
+            .setName("Project Journal sources")
             .setDesc(
-                "Folders contributing to the Journal Stream. Journal form embeds entries as content with an accent border and caption; document form lists created documents as links. Nested folders: the most specific source wins. Changes apply on the next refresh."
+                "Folders contributing to the Project Journal. Journal form embeds entries as content with an accent border and caption; document form lists created documents as links. Nested folders: the most specific source wins. Changes apply on the next refresh."
             );
 
         const sourcesContainer = containerEl.createDiv("sources-container");
@@ -160,7 +160,7 @@ export class DailyNoteSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Add source")
-            .setDesc("Add a folder to the Journal Stream")
+            .setDesc("Add a folder to the Project Journal")
             .addButton((button) =>
                 button
                     .setButtonText("Add Source")
