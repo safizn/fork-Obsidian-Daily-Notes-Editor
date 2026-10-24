@@ -1,8 +1,8 @@
 const HUES = [4, 22, 40, 75, 105, 150, 175, 205, 230, 260, 290, 330];
 
 /* FNV-1a over the lowercased type, so a type always maps to one color —
- * same scheme as okf-link-type-badge, okf-frontmatter-page and
- * okf-bundle-navigator. */
+ * same scheme as the okf-toolkit features (page chrome, link badges,
+ * bundle navigator). */
 export function typeHue(type: string): number {
     const s = type.toLowerCase();
     let h = 0x811c9dc5;

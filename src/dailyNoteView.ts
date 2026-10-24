@@ -667,7 +667,7 @@ export class DailyNoteView extends ItemView {
         for (const el of this.dayNavEls) el.style.display = visible ? "" : "none";
     }
 
-    /* Scoped entry point for other plugins (okf-bundle-navigator
+    /* Scoped entry point for other plugins (okf-toolkit navigator
      * badges): the Project Journal with every journal but the named
      * one hidden */
     focusProjectJournal(visibleJournal: string): void {

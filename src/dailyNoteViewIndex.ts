@@ -145,7 +145,7 @@ export default class DailyNoteViewPlugin extends Plugin {
     }
 
     /* Open (or focus) the Project Journal with every journal but the
-     * named one hidden — the okf-bundle-navigator badges call this */
+     * named one hidden — the okf-toolkit navigator badges call this */
     async openProjectJournal(visibleJournal: string) {
         const workspace = this.app.workspace;
         let leaf = workspace.getLeavesOfType(DAILY_NOTE_VIEW_TYPE)[0];

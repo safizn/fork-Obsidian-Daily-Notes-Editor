@@ -59,9 +59,7 @@
 
     // Reflect the hovered link in the OKF bundle navigator when present
     function previewInNavigator(path: string | null) {
-        const nav = (plugin.app as any).plugins?.plugins?.[
-            "okf-bundle-navigator"
-        ];
+        const nav = (plugin.app as any).plugins?.plugins?.["okf-toolkit"];
         if (nav?.previewFile) nav.previewFile(path);
     }
 </script>
